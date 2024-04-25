@@ -10,7 +10,7 @@ class PytorchRefactoredModel(nn.Module):
     """
 
     def __init__(self, input_shape, hyperparameters):
-        super(OriginalModel, self).__init__()
+        super(PytorchRefactoredModel, self).__init__()
         self.layers = nn.ModuleList()
         units = hyperparameters["num_units"]
         dropout_rate = hyperparameters["dropout_rate"]
