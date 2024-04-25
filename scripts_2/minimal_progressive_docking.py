@@ -63,9 +63,6 @@ bs = int(io_args.bs)
 oss = int(io_args.os)
 t_mol = float(io_args.t_mol)
 
-CONTINUOUS = io_args.continuous
-NORMALIZE = io_args.normalization
-SMILES = io_args.smiles
 TRAINING_SIZE = int(io_args.train_num_mol)
 num_molec = int(io_args.number_mol)
 
@@ -78,28 +75,6 @@ if SAVE_PATH is None: SAVE_PATH = DATA_PATH
 print(nu,df,lr,ba,wt,cf,bs,oss,DATA_PATH)
 if TRAINING_SIZE == -1: print("Training size not specified, using entire dataset...")
 print("Finished parsing args...")
-
-
-def encode_smiles(series):
-    print("Encoding smiles")
-    # parameter is a pd.series with ZINC_IDs as the indicies and smiles as the elements
-    encoded_smiles = DDModel.process_smiles(series.values, 100, fit_range=100, use_padding=True, normalize=True)
-    encoded_dict = dict(zip(series.keys(), encoded_smiles))
-    # returns a dict array of the smiles.
-    return encoded_dict
-
-
-def get_oversampled_smiles(Oversampled_zid, smiles_series):
-    # Must return a dictionary where the keys are the zids and the items are
-    # numpy ndarrys with n numbers of the same encoded smile
-    # the n comes from the number of times that particular zid was chosen at random. 
-    oversampled_smiles = {}
-    encoded_smiles = encode_smiles(smiles_series)
-    
-    for key in Oversampled_zid.keys():
-        smile = encoded_smiles[key]
-        oversampled_smiles[key] = np.repeat([smile], Oversampled_zid[key], axis=0)
-    return oversampled_smiles
 
 
 def get_oversampled_morgan(Oversampled_zid, fname):
@@ -135,14 +110,14 @@ def get_morgan_and_scores(morgan_path, ID_labels):
 
             mol_info=line.rstrip().split(',')
             train_id.append(mol_info[0])
-            
+
             # "Decompressing" the information from the file about where the 1s are on the 1024 bit vector.
             bit_indicies = mol_info[1:]  # array of indexes of the binary 1s in the 1024 bit vector representing the morgan fingerprint
             for elem in bit_indicies:
                 train_set[line_no,int(elem)] = 1
 
             line_no+=1
-    
+
     train_set = train_set[:line_no,:]
 
     print('Done...')
@@ -159,20 +134,20 @@ def get_morgan_and_scores(morgan_path, ID_labels):
     y_train = train_data[[score_col]].values    # labels
     return X_train, y_train
 
-
 # Gets the labels data
-def get_data(smiles_path, morgan_path, labels_path):
-    # Loading the docking scores (with corresponding Zinc_IDs)
-    labels = pd.read_csv(labels_path, sep=',', header=0)
+def get_data(morgan_path, labels_path):
+    # Load the docking scores (with corresponding Zinc_IDs)
+    labels = pd.read_csv(labels_path, sep=",", header=0)
 
-    # Merging and setting index to the ID if smiles flag is set
-    if SMILES:
-        smiles = pd.read_csv(smiles_path, sep=' ', names=['smile', 'ZINC_ID'])
-        data = smiles.merge(labels, on='ZINC_ID')
-    else:
-        morgan = pd.read_csv(morgan_path, usecols=[0], header=None, names=['ZINC_ID']) # reading in only the zinc ids
-        data = morgan.merge(labels, on='ZINC_ID')
-    data.set_index('ZINC_ID', inplace=True)
+    # Load Morgan fingerprints, only reading in the Zinc IDs
+    morgan = pd.read_csv(morgan_path, usecols=[0], header=None, names=["ZINC_ID"])
+
+    # Merge the Morgan data with the labels data on 'ZINC_ID'
+    data = morgan.merge(labels, on="ZINC_ID")
+
+    # Set the index of the dataframe to 'ZINC_ID'
+    data.set_index("ZINC_ID", inplace=True)
+
     return data
 
 
@@ -241,45 +216,15 @@ if (y_valid_first.r_i_docking_score < cf).values.sum() <= 10 or \
     sys.exit()
 
 
-if CONTINUOUS:
-    print('Using continuous labels...')
-    y_valid = valid_data.r_i_docking_score
-    y_test = test_data.r_i_docking_score
-    y_train = train_data.r_i_docking_score
+print('Using binary labels...')
+# valid and testing data is from the first iteration.
+y_valid = y_valid_first.r_i_docking_score < cf
+y_test = y_test_first.r_i_docking_score < cf
+y_train = train_data.r_i_docking_score < cf
 
-    if NORMALIZE:
-        print('Adding cutoff to be normalized')
-        cutoff_ser = pd.Series([cf], index=['cutoff'])
-        y_train = y_train.append(cutoff_ser)
-
-        print("Normalizing docking scores...")
-        # Normalize the docking scores
-        y_valid = DDModel.normalize(y_valid)
-        y_test = DDModel.normalize(y_test)
-        y_train = DDModel.normalize(y_train)
-
-        print('Extracting normalized cutoff...')
-        cf_norm = y_train['cutoff']
-        y_train.drop(labels=['cutoff'], inplace=True)   # removing it from the dataset
-
-        cf_to_use = cf_norm
-    else:
-        cf_to_use = cf
-
-    # Getting all the ids of hits and non hits.
-    y_pos = y_train[y_train < cf_to_use]
-    y_neg = y_train[y_train >= cf_to_use]
-
-else:
-    print('Using binary labels...')
-    # valid and testing data is from the first iteration.
-    y_valid = y_valid_first.r_i_docking_score < cf
-    y_test = y_test_first.r_i_docking_score < cf
-    y_train = train_data.r_i_docking_score < cf
-
-    # Getting all the ids of hits and non hits.
-    y_pos = y_train[y_train == 1]   # true
-    y_neg = y_train[y_train == 0]   # false
+# Getting all the ids of hits and non hits.
+y_pos = y_train[y_train == 1]   # true
+y_neg = y_train[y_train == 0]   # false
 
 print('Converting y_pos and y_neg to dict (for faster access time)')
 y_pos = y_pos.to_dict()
@@ -318,35 +263,24 @@ for i in range(sample_size):
         Oversampled_zid[neg_zid] = 1
         Oversampled_zid_y[neg_zid] = y_neg[neg_zid]
 
-# Getting the inputs
-if SMILES:
-    print("Using smiles...")
-    X_valid, y_valid = np.array(encode_smiles(valid_data.smile).values()), y_valid.to_numpy()
-    X_test, y_test = np.array(encode_smiles(test_data).values()), y_test.to_numpy()
+Oversampled_X_train = np.zeros([sample_size*2, 1024], dtype=np.bool)
+print('Using morgan fingerprints...')
+# this part is what gets the morgan fingerprints:
+print('looking through file path:', DATA_PATH + '/iteration_'+str(n_iteration)+'/morgan/*')
 
-    # The training data needs to be oversampled:
-    print("Getting oversampled smiles...")
-    Oversampled_zid = get_oversampled_smiles(Oversampled_zid, train_data.smile)
-    Oversampled_X_train = np.zeros([sample_size*2, len(list(Oversampled_zid.values())[0][0])])
-    print(len(list(Oversampled_zid.values())[0]))
-else:
-    Oversampled_X_train = np.zeros([sample_size*2, 1024], dtype=np.bool)
-    print('Using morgan fingerprints...')
-    # this part is what gets the morgan fingerprints:
-    print('looking through file path:', DATA_PATH + '/iteration_'+str(n_iteration)+'/morgan/*')
-    for i in range(1, n_iteration+1):
-        for f in glob.glob(DATA_PATH + '/iteration_'+str(i)+'/morgan/*'):
-            set_name = f.split('/')[-1].split('_')[0]
-            print('\t', set_name)
-            # Valid and test datasets are always going to be from the first iteration.
-            if i == 1:
-                if set_name == 'valid':
-                    X_valid, y_valid = get_morgan_and_scores(f, y_valid)
-                elif set_name == 'test':
-                    X_test, y_test = get_morgan_and_scores(f, y_test)
+for i in range(1, n_iteration+1):
+    for f in glob.glob(DATA_PATH + '/iteration_'+str(i)+'/morgan/*'):
+        set_name = f.split('/')[-1].split('_')[0]
+        print('\t', set_name)
+        # Valid and test datasets are always going to be from the first iteration.
+        if i == 1:
+            if set_name == 'valid':
+                X_valid, y_valid = get_morgan_and_scores(f, y_valid)
+            elif set_name == 'test':
+                X_test, y_test = get_morgan_and_scores(f, y_test)
 
-            # Fills the dictionary with the actual morgan fingerprints
-            Oversampled_zid = get_oversampled_morgan(Oversampled_zid, f)
+        # Fills the dictionary with the actual morgan fingerprints
+        Oversampled_zid = get_oversampled_morgan(Oversampled_zid, f)
 
 print("y validation shape:", y_valid.shape)
 
@@ -369,31 +303,32 @@ for key in Oversampled_zid.keys():
 
 print("Done oversampling, number of missing morgan fingerprints:", num_morgan_missing)
 
-class TimedStopping(Callback):
-    '''
-    Stop training when enough time has passed.
-    # Arguments
-        seconds: maximum time before stopping.
-        verbose: verbosity mode.
-    '''
-    def __init__(self, seconds=None, verbose=1):
-        super(Callback, self).__init__()
+#! I do not want to handle it like this
+# class TimedStopping(Callback):
+#     '''
+#     Stop training when enough time has passed.
+#     # Arguments
+#         seconds: maximum time before stopping.
+#         verbose: verbosity mode.
+#     '''
+#     def __init__(self, seconds=None, verbose=1):
+#         super(Callback, self).__init__()
 
-        self.start_time = 0
-        self.seconds = seconds
-        self.verbose = verbose
+#         self.start_time = 0
+#         self.seconds = seconds
+#         self.verbose = verbose
 
-    def on_train_begin(self, logs={}):
-        self.start_time = time.time()
+#     def on_train_begin(self, logs={}):
+#         self.start_time = time.time()
 
-    def on_epoch_end(self, epoch, logs={}):
-        print('epoch done')
-        if time.time() - self.start_time > self.seconds:
-            self.model.stop_training = True
-            if self.verbose:
-                print('Stopping after %s seconds.' % self.seconds)
+#     def on_epoch_end(self, epoch, logs={}):
+#         print('epoch done')
+#         if time.time() - self.start_time > self.seconds:
+#             self.model.stop_training = True
+#             if self.verbose:
+#                 print('Stopping after %s seconds.' % self.seconds)
 
-#FREE MEMORY
+# FREE MEMORY
 
 del data_from_prev
 del y_neg
@@ -411,12 +346,12 @@ del y_old
 
 gc.collect()
 
-#END FREE MEMORY
+# END FREE MEMORY
 
 print("Data prep time:", time.time() - START_TIME)
 print("Configuring model...")
 
-# This is our new model 
+# This is our new model
 hyperparameters = {"bin_array": ba*[0,1], "dropout_rate": df, "learning_rate": lr,
                    "num_units": nu, "batch_size": bs, "class_weight": wt, "epsilon": 1e-06}
 print("\n"+"-"*20)
@@ -492,13 +427,6 @@ prediction_valid = progressive_docking.predict(X_valid)
 
 print('Predicting on testing data')
 prediction_test = progressive_docking.predict(X_test)
-
-if CONTINUOUS:
-    # Converting back to binary values to get stats
-    y_valid = y_valid < cf_to_use
-    prediction_valid = prediction_valid < cf_to_use
-    y_test = y_test < cf_to_use
-    prediction_test = prediction_test < cf_to_use
 
 print('Getting stats from predictions...')
 # Getting stats for validation
