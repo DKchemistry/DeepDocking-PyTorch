@@ -389,7 +389,10 @@ except IOError:  # file doesnt exist yet
 num_epochs = 500
 cw = {0:wt, 1:1}
 es = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=0, mode='auto')
+#! needs to be refactored
 es1 = TimedStopping(seconds=36000)   # stop training after 10 hours
+
+#! I doubt DDLogger will work 
 logger = DDLogger(
     log_path=SAVE_PATH + "/iteration_" + str(n_iteration) + "/all_models/model_{}_train_log.csv".format(str(mn)),
     max_time=36000,
