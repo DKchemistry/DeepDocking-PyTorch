@@ -170,6 +170,10 @@ try:
 except OSError:
     pass
 
+try:
+    os.mkdir(SAVE_PATH + "/iteration_" + str(n_iteration) + "/nd_arrays")
+except OSError:
+    pass
 
 # Getting data from prev iterations and this iteration
 data_from_prev = pd.DataFrame()
@@ -393,3 +397,26 @@ print("X Data Shape[1:]", Oversampled_X_train.shape[1:])
 print("X Data Shape", Oversampled_X_train.shape)
 print("X Data example", Oversampled_X_train[0])
 print("Hyperparameters", hyperparameters)
+
+# save training data
+
+# Construct the path for saving
+nd_arrays_path = os.path.join(SAVE_PATH, f"iteration_{n_iteration}", "nd_arrays")
+
+# Ensure the directory exists
+os.makedirs(nd_arrays_path, exist_ok=True)
+
+# consistent file name 
+x_train_filename = "Oversampled_X_train_iteration.npy"
+y_train_filename = "Oversampled_y_train_iteration.npy"
+
+# Full paths
+x_train_filepath = os.path.join(nd_arrays_path, x_train_filename)
+y_train_filepath = os.path.join(nd_arrays_path, y_train_filename)
+
+# Save the arrays
+np.save(x_train_filepath, Oversampled_X_train)
+np.save(y_train_filepath, Oversampled_y_train)
+
+print(f"Saved Oversampled_X_train to {x_train_filepath}")
+print(f"Saved Oversampled_y_train to {y_train_filepath}")
