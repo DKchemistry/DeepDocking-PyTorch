@@ -2,6 +2,10 @@ import gc
 import argparse
 import glob
 import os
+
+# either people need to learn to use SLURM
+# or I need to find a way to be nice and not kill MD jobs
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import random
 import sys
 import time
@@ -13,10 +17,15 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, TensorDataset, random_split
 
 
-from  ML.ModelsPytorch import PytorchRefactoredModel
+from ML.ModelsPytorch import PytorchRefactoredModel
 
 # Time tracking and argument parsing
 START_TIME = time.time()
+
+# GPU device usage
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
 print("Parsing args...")
 parser = argparse.ArgumentParser()
 parser.add_argument("-num_units", "--nu", type=int, required=True)
@@ -80,47 +89,59 @@ hyperparameters = {
     "epsilon": 1e-06,
 }
 
-#! Still need to get the data, might be as simple as .from_numpy?
-print("Loading dummy data...")
-# Assuming data loading and preprocessing is handled elsewhere
-# Dummy setup for illustration:
-features = np.random.randn(io_args.number_mol, 1024)
-labels = np.random.randint(0, 2, size=(io_args.number_mol, 1))
-dataset = TensorDataset(
-    torch.tensor(features, dtype=torch.float32),
-    torch.tensor(labels, dtype=torch.float32),
+print("Loading preprocessed data...")
+
+# Load preprocessed data
+x_train_path = os.path.join(
+    SAVE_PATH, f"iteration_{n_it}/nd_arrays/Oversampled_X_train_iteration.npy"
 )
+y_train_path = os.path.join(
+    SAVE_PATH, f"iteration_{n_it}/nd_arrays/Oversampled_y_train_iteration.npy"
+)
+
+X_train = np.load(x_train_path)
+y_train = np.load(y_train_path).reshape(-1)  # Reshape y_train to ensure it's a 1D array
+
+# Convert to tensors
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+
+# Create TensorDataset and DataLoader
+dataset = TensorDataset(X_train_tensor, y_train_tensor)
 dataloader = DataLoader(dataset, batch_size=io_args.bs, shuffle=True)
 
-print("Finished loading dummy data...")
+print("Data loaded and DataLoader created.")
+
 print("Init model...")
 # Model initialization
-model = PytorchRefactoredModel(
-    input_shape=1024, hyperparameters=hyperparameters
-)  
+model = PytorchRefactoredModel(input_shape=1024, hyperparameters=hyperparameters).to(
+    device
+)
 optimizer = optim.Adam(model.parameters(), lr=io_args.lr)
 loss_function = nn.BCEWithLogitsLoss()
 
 
 # Training loop, need test loop
 
-def train_model(model, dataloader, optimizer, loss_function):
+
+# Update training loop to move data to the same device
+def train_model(model, dataloader, optimizer, loss_function, device):
     model.train()
-    # how are epochs usually handled?
-    # it is hardcoded and has early stopping
-    # until everything works, leave as 1
-    for epoch in range(1):
+    for epoch in range(10):  # Adjust number of epochs as necessary
         for inputs, targets in dataloader:
+            inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = loss_function(outputs, targets)
+            loss = loss_function(
+                outputs, targets.unsqueeze(1)
+            )  # Ensure correct shape for loss calculation
             loss.backward()
             optimizer.step()
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
 
+
 print("Starting training...")
 
-train_model(model, dataloader, optimizer, loss_function)
+train_model(model, dataloader, optimizer, loss_function, device)
 
 print("Training completed in:", time.time() - START_TIME, "seconds")
-
