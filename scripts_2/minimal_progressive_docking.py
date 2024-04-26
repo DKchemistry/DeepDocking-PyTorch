@@ -303,31 +303,6 @@ for key in Oversampled_zid.keys():
 
 print("Done oversampling, number of missing morgan fingerprints:", num_morgan_missing)
 
-#! I do not want to handle it like this
-# class TimedStopping(Callback):
-#     '''
-#     Stop training when enough time has passed.
-#     # Arguments
-#         seconds: maximum time before stopping.
-#         verbose: verbosity mode.
-#     '''
-#     def __init__(self, seconds=None, verbose=1):
-#         super(Callback, self).__init__()
-
-#         self.start_time = 0
-#         self.seconds = seconds
-#         self.verbose = verbose
-
-#     def on_train_begin(self, logs={}):
-#         self.start_time = time.time()
-
-#     def on_epoch_end(self, epoch, logs={}):
-#         print('epoch done')
-#         if time.time() - self.start_time > self.seconds:
-#             self.model.stop_training = True
-#             if self.verbose:
-#                 print('Stopping after %s seconds.' % self.seconds)
-
 # FREE MEMORY
 
 del data_from_prev
