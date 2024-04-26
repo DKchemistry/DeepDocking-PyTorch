@@ -90,7 +90,7 @@ def get_oversampled_morgan(Oversampled_zid, fname):
             if (tmp[0] in Oversampled_zid.keys()) and (
                 type(Oversampled_zid[tmp[0]]) != np.ndarray
             ):
-                train_set = np.zeros([1, 1024], dtype=np.bool)
+                train_set = np.zeros([1, 1024], dtype=np.bool_)
                 on_bit_vector = tmp[1:]
 
                 for elem in on_bit_vector:
@@ -129,7 +129,7 @@ def get_morgan_and_scores(morgan_path, ID_labels):
     train_set = train_set[:line_no, :]
 
     print("Done...")
-    train_pd = pd.DataFrame(data=train_set, dtype=np.bool)
+    train_pd = pd.DataFrame(data=train_set, dtype=np.bool_)
     train_pd["ZINC_ID"] = train_id
 
     ID_labels = ID_labels.to_frame()
@@ -309,7 +309,7 @@ for i in range(sample_size):
         Oversampled_zid[neg_zid] = 1
         Oversampled_zid_y[neg_zid] = y_neg[neg_zid]
 
-Oversampled_X_train = np.zeros([sample_size * 2, 1024], dtype=np.bool)
+Oversampled_X_train = np.zeros([sample_size * 2, 1024], dtype=np.bool_)
 print("Using morgan fingerprints...")
 # this part is what gets the morgan fingerprints:
 print(
