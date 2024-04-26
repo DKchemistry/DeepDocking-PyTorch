@@ -122,13 +122,17 @@ Let's grab the args from a generic simple jobs run:
 
 python -u progressive_docking_pytorch.py -os 10 -bs 256 -num_units 100 -dropout 0.2 -learn_rate 0.0001 -bin_array 2 -wt 3 -cf -9.236514914296889 -rec 0.9 -n_it 1 -t_mol 65.994673 --data_path /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1 --save_path /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1 -n_mol 462000
 
-I am cutting down the code from `progressive_doing.py` to just the bare essentials. 
+I am cutting down the code from `progressive_docking.py` to just the bare essentials. 
 
 * smiles is not used 
 * continous is not used 
 * normalize is not used 
 * i dont think encode smiles is used 
 
-getting the data in is really hard. i have to sit down and really understand the code to do that. 
+getting the data in is really hard. i have to sit down and really understand the code to do that. `data_progressive_docking.py` is the file that handles the data. 
+
+python -u data_progressive_docking.py -os 10 -bs 256 -num_units 100 -dropout 0.2 -learn_rate 0.0001 -bin_array 2 -wt 3 -cf -9.236514914296889 -rec 0.9 -n_it 1 -t_mol 65.994673 --data_path /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1 --save_path /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1 -n_mol 462000
+
+I still need to do that, but a good first step is to just delete all the training related stuff from it and instead just have it load the data. then save it to an npy file. then work with getting that into the model. 
 
 ### Phase 5
