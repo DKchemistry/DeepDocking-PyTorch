@@ -135,4 +135,25 @@ python -u data_progressive_docking.py -os 10 -bs 256 -num_units 100 -dropout 0.2
 
 I still need to do that, but a good first step is to just delete all the training related stuff from it and instead just have it load the data. then save it to an npy file. then work with getting that into the model. 
 
+The data was handled by just having `data_progressive_docking.py` write a file to disk. It needs to be expanded to write the valid and test data as well. 
+
+
+### To do Phase 4 
+
+1. `data_progressive_docking.py` needs to be expanded to write the valid and test data as well.
+    * since valid/test doesn't expand past iteration 1, we should likely only write it to iteration_1 dir, though it may be a little awkward to write. 
+    * 
+
+2. `progressive_docking_pytorch.py` needs to have the model use 
+    * EarlyStopping and TimedStopping
+         * EarlyStopping in tf is: `from tensorflow.keras.callbacks import EarlyStopping`
+         * Pytorch doesn't have this so we can write it seperately, but we need to already have the validation data, as that is how Francesco had it written. So back to point 1. 
+    * Also infer on the test and valid data.
+        * We need to make sure we handle the ability to modulate recall. 
+        `python -u data_progressive_docking.py ... -rec 0.9`
+        NOTE: this has nothing to do with training against a loss function! This is post-processing!  
+    * Keep track of model number/hyperparamters and write to a file like the original. 
+    * Get metrics like the original
+
+
 ### Phase 5
