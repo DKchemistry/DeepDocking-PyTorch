@@ -32,4 +32,9 @@ class PytorchRefactoredModel(nn.Module):
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        return torch.sigmoid(self.output(x))  # Use sigmoid for binary classification
+            # returning logits directly b/c of loss fn 
+        return self.output(x)  
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+        print(f"Model saved to {path}")
