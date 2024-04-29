@@ -420,3 +420,32 @@ np.save(y_train_filepath, Oversampled_y_train)
 
 print(f"Saved Oversampled_X_train to {x_train_filepath}")
 print(f"Saved Oversampled_y_train to {y_train_filepath}")
+
+
+# Save the validation and test data to iteration 1 if we run `-n_it 1`
+if n_iteration == 1:
+    # Construct the path for saving
+    nd_arrays_path = os.path.join(SAVE_PATH, f"iteration_{n_iteration}", "nd_arrays")
+    os.makedirs(nd_arrays_path, exist_ok=True)
+    
+    x_valid_filename = "X_valid.npy"
+    y_valid_filename = "y_valid.npy"
+    x_test_filename = "X_test.npy"
+    y_test_filename = "y_test.npy"
+    
+    x_valid_filepath = os.path.join(nd_arrays_path, x_valid_filename)
+    y_valid_filepath = os.path.join(nd_arrays_path, y_valid_filename)
+    x_test_filepath = os.path.join(nd_arrays_path, x_test_filename)
+    y_test_filepath = os.path.join(nd_arrays_path, y_test_filename)
+    
+    np.save(x_valid_filepath, X_valid)
+    np.save(y_valid_filepath, y_valid)
+    np.save(x_test_filepath, X_test)
+    np.save(y_test_filepath, y_test)
+
+    
+    print(f"Saved X_valid to {x_valid_filepath}")
+    print(f"Saved y_valid to {y_valid_filepath}")
+    print(f"Saved X_test to {x_test_filepath}")
+    print(f"Saved y_test to {y_test_filepath}")
+    print("Saved validation and test data to iteration 1")
