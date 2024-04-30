@@ -120,6 +120,7 @@ hyperparameters = {
     "epsilon": 1e-06,
 }
 
+# This approach will have to be changed as oversampling is done on data collection
 print("Loading preprocessed data...")
 
 # Load preprocessed data
@@ -175,7 +176,9 @@ model = PytorchRefactoredModel(input_shape=1024, hyperparameters=hyperparameters
     device
 )
 optimizer = optim.Adam(model.parameters(), lr=io_args.lr)
-loss_function = nn.BCEWithLogitsLoss()
+# Inversely weight class 1 due to TF -> PyTorch differences
+inverse_wt = 1.0 / wt  
+loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(inverse_wt).to(device))
 
 
 # Update training loop to move data to the same device
@@ -219,6 +222,5 @@ model_save_path = os.path.join(
 print("Starting training...")
 
 train_model(model, dataloader, optimizer, loss_function, device, model_save_path)
-
 
 print("Training completed in:", time.time() - START_TIME, "seconds")
