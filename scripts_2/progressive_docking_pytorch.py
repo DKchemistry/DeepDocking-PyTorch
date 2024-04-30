@@ -6,6 +6,7 @@ import sys
 import time
 import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_recall_curve, roc_curve, auc
 
 pynvml.nvmlInit()
 
@@ -91,6 +92,7 @@ n_it = int(io_args.n_it)
 bs = int(io_args.bs)
 oss = int(io_args.os)
 t_mol = float(io_args.t_mol)
+total_mols = t_mol
 
 TRAINING_SIZE = int(io_args.train_num_mol)
 num_molec = int(io_args.number_mol)
@@ -198,7 +200,7 @@ def train_model(
     timed_stopping = TimedStopping(max_seconds=3600)
 
     best_validation_loss = np.Inf
-    for epoch in range(10):
+    for epoch in range(2):
         model.train()
         # batch_idx is for fine grained tracking in tensorboard
         # might not keep it
@@ -300,4 +302,127 @@ train_model(
     mn,
 )
 
-print("Training completed in:", time.time() - START_TIME, "seconds")
+END_TIME = time.time() - START_TIME
+print("Training completed in:", END_TIME, "seconds")
+
+# Prediction onto testing and validation
+
+
+def generate_predictions(model, dataloader, device):
+    model.eval()
+    predictions = []
+    with torch.no_grad():
+        for inputs, _ in dataloader:
+            inputs = inputs.to(device)
+            logits = model(inputs)
+            probabilities = torch.sigmoid(
+                logits
+            ).squeeze()  # Convert logits to probabilities
+            predictions.extend(probabilities.cpu().numpy())  # Collect predictions
+    return np.array(predictions)
+
+print("Generating predictions on validation...")
+prediction_valid = generate_predictions(model, valid_dataloader, device)
+print("Generating predictions on testing...")
+prediction_test = generate_predictions(model, test_dataloader, device)
+
+
+print("Getting stats from predictions...")
+# Getting stats for validation
+precision_vl, recall_vl, thresholds_vl = precision_recall_curve(
+    y_valid, prediction_valid
+)
+fpr_vl, tpr_vl, thresh_vl = roc_curve(y_valid, prediction_valid)
+auc_vl = auc(fpr_vl, tpr_vl)
+pr_vl = precision_vl[np.where(recall_vl > rec)[0][-1]]
+pos_ct_orig = np.sum(y_valid)
+Total_left = rec * pos_ct_orig / pr_vl * total_mols * 1000000 / len(y_valid)
+tr = thresholds_vl[np.where(recall_vl > rec)[0][-1]]
+
+# Getting stats for testing
+precision_te, recall_te, thresholds_te = precision_recall_curve(y_test, prediction_test)
+fpr_te, tpr_te, thresh_te = roc_curve(y_test, prediction_test)
+auc_te = auc(fpr_te, tpr_te)
+pr_te = precision_te[np.where(thresholds_te > tr)[0][0]]
+re_te = recall_te[np.where(thresholds_te > tr)[0][0]]
+pos_ct_orig = np.sum(y_test)
+Total_left_te = re_te * pos_ct_orig / pr_te * total_mols * 1000000 / len(y_test)
+print("Stats collected.")
+
+with open(
+    SAVE_PATH
+    + "/iteration_"
+    + str(n_it)
+    + "/pytorch_hyperparameter_morgan_with_freq_v3.csv",
+    "a",
+) as ref:
+    ref.write(
+        str(mn)
+        + ","
+        + str(oss)
+        + ","
+        + str(bs)
+        + ","
+        + str(lr)
+        + ","
+        + str(ba)
+        + ","
+        + str(nu)
+        + ","
+        + str(df)
+        + ","
+        + str(wt)
+        + ","
+        + str(cf)
+        + ","
+        + str(auc_vl)
+        + ","
+        + str(pr_vl)
+        + ","
+        + str(Total_left)
+        + ","
+        + str(auc_te)
+        + ","
+        + str(pr_te)
+        + ","
+        + str(re_te)
+        + ","
+        + str(Total_left_te)
+        + ","
+        + str(pos_ct_orig)
+        + "\n"
+    )
+
+with open(
+    SAVE_PATH
+    + "/iteration_"
+    + str(n_it)
+    + "/pytorch_hyperparameter_morgan_with_freq_v3.txt",
+    "a",
+) as ref:
+    # The sting of hyperparameters that stores what will be appended to the file ref
+    hp = "\n" + "-" * 15 + "\n" + "Hyperparameters:" + "\n"
+    hp += "- Model Number: " + str(mn) + "\n"
+    hp += "- Training Time: " + str(round(END_TIME, 3)) + "\n"
+    hp += "  - OS: " + str(oss) + "\n"
+    hp += "  - Batch Size: " + str(bs) + "\n"
+    hp += "  - Learning Rate: " + str(lr) + "\n"
+    hp += "  - Bin Array: " + str(ba) + "\n"
+    hp += "  - Num. Units: " + str(nu) + "\n"
+    hp += "  - Dropout Freq.: " + str(df) + "\n" * 2
+
+    hp += "  - Class Weight Parameter wt: " + str(wt) + "\n"
+    hp += "  - cf: " + str(cf) + "\n"
+    hp += "  - auc vl: " + str(auc_vl) + "\n"
+    hp += "  - auc te: " + str(auc_te) + "\n"
+    hp += "  - Precision validation: " + str(pr_vl) + "\n"
+    hp += "  - Precision testing: " + str(pr_te) + "\n"
+    hp += "  - Recall testing: " + str(re_te) + "\n"
+    hp += "  - Pos ct orig: " + str(pos_ct_orig) + "\n"
+    hp += "  - Total Left: " + str(Total_left) + "\n"
+    hp += "  - Total Left testing: " + str(Total_left_te) + "\n\n"
+
+    hp += "-" * 15
+    ref.write(hp)
+
+print("Model number", mn, "complete.")
