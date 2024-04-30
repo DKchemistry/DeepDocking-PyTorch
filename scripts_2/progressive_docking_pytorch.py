@@ -45,7 +45,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, TensorDataset, random_split
-
+from torch.utils.tensorboard import SummaryWriter 
 
 from ML.ModelsPytorch import PytorchRefactoredModel
 from ML.DDPytorchCallbacks import EarlyStopping, TimedStopping
@@ -189,14 +189,20 @@ def train_model(
     loss_function,
     device,
     model_save_path,
+    save_path,
+    iteration,
+    model_number,
 ):
+    writer = get_tensorboard_writer(save_path, iteration, model_number)
     early_stopping = EarlyStopping(patience=10, verbose=True, path=model_save_path)
     timed_stopping = TimedStopping(max_seconds=3600)
 
     best_validation_loss = np.Inf
     for epoch in range(10):
         model.train()
-        for inputs, targets in train_dataloader:
+        # batch_idx is for fine grained tracking in tensorboard
+        # might not keep it
+        for batch_idx, (inputs, targets) in enumerate(train_dataloader):
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -204,7 +210,14 @@ def train_model(
             loss.backward()
             optimizer.step()
 
+            # Log training loss per batch
+            writer.add_scalar(
+                "Loss/Train", loss.item(), epoch * len(train_dataloader) + batch_idx
+            )
+
         val_loss = validate(model, valid_dataloader, loss_function, device)
+        writer.add_scalar("Loss/Validate", val_loss, epoch)
+
         if val_loss < best_validation_loss:
             best_validation_loss = val_loss
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}")
@@ -225,6 +238,8 @@ def train_model(
             model_save_path
         )  # Save at end if the best was not during early stopping
         print(f"Model saved after training to {model_save_path}")
+
+    writer.close()
 
 
 def validate(model, dataloader, loss_function, device):
@@ -261,6 +276,15 @@ model_save_path = os.path.join(
     SAVE_PATH, f"iteration_{n_it}", "all_models", f"model_{mn}_pth.pt"
 )
 
+
+def get_tensorboard_writer(save_path, iteration, model_number):
+    # Create a directory for TensorBoard logs inside the iteration directory
+    tb_log_dir = os.path.join(
+        save_path, f"iteration_{iteration}", "tensorboard_logs", f"model_{model_number}"
+    )
+    os.makedirs(tb_log_dir, exist_ok=True)
+    return SummaryWriter(log_dir=tb_log_dir)
+
 print("Starting training...")
 
 train_model(
@@ -271,6 +295,9 @@ train_model(
     loss_function,
     device,
     model_save_path,
+    SAVE_PATH,  # TensorBoard save path
+    n_it,
+    mn,
 )
 
 print("Training completed in:", time.time() - START_TIME, "seconds")
