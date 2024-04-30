@@ -498,7 +498,8 @@ def train_model(
     timed_stopping = TimedStopping(max_seconds=3600)
 
     best_validation_loss = np.Inf
-    for epoch in range(2):
+    # epochs matching tf version 
+    for epoch in range(500):
         model.train()
         # batch_idx is for fine grained tracking in tensorboard
         # might not keep it
