@@ -48,7 +48,7 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset, random_split
 
 
 from ML.ModelsPytorch import PytorchRefactoredModel
-from ML.DDPytorchCallbacks import EarlyStopping
+from ML.DDPytorchCallbacks import EarlyStopping, TimedStopping
 
 # Time tracking and argument parsing
 START_TIME = time.time()
@@ -191,6 +191,7 @@ def train_model(
     model_save_path,
 ):
     early_stopping = EarlyStopping(patience=10, verbose=True, path=model_save_path)
+    timed_stopping = TimedStopping(max_seconds=3600)
 
     best_validation_loss = np.Inf
     for epoch in range(10):
@@ -211,6 +212,10 @@ def train_model(
         early_stopping(val_loss, model)
         if early_stopping.early_stop:
             print("Early stopping triggered")
+            break
+
+        if timed_stopping.should_stop():
+            print("Timed stopping triggered")
             break
 
     if best_validation_loss == early_stopping.val_loss_min:

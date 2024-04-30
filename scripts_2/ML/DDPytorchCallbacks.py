@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-
+import time 
 
 class EarlyStopping:
     def __init__(
@@ -44,3 +44,17 @@ class EarlyStopping:
                 )
             torch.save(model.state_dict(), self.path)
             self.val_loss_min = val_loss
+
+class TimedStopping:
+    def __init__(self, max_seconds=None, verbose=1):
+        self.max_seconds = max_seconds
+        self.verbose = verbose
+        self.start_time = time.time()
+
+    def should_stop(self):
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time > self.max_seconds:
+            if self.verbose:
+                print(f"Stopping after {elapsed_time:.2f} seconds.")
+            return True
+        return False
