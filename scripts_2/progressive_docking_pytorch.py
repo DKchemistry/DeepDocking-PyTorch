@@ -166,7 +166,7 @@ y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
 
 # Create TensorDataset and DataLoader
 dataset = TensorDataset(X_train_tensor, y_train_tensor)
-dataloader = DataLoader(dataset, batch_size=io_args.bs, shuffle=True)
+train_dataloader = DataLoader(dataset, batch_size=io_args.bs, shuffle=True)
 
 print("Data loaded and DataLoader created.")
 
@@ -181,22 +181,59 @@ inverse_wt = 1.0 / wt
 loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(inverse_wt).to(device))
 
 
-# Update training loop to move data to the same device
-def train_model(model, dataloader, optimizer, loss_function, device, model_save_path):
-    model.train()
-    for epoch in range(10):  # Adjust number of epochs as necessary
-        for inputs, targets in dataloader:
+def train_model(
+    model,
+    train_dataloader,
+    valid_dataloader,
+    optimizer,
+    loss_function,
+    device,
+    model_save_path,
+):
+    early_stopping = EarlyStopping(patience=10, verbose=True, path=model_save_path)
+
+    best_validation_loss = np.Inf
+    for epoch in range(10):
+        model.train()
+        for inputs, targets in train_dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = loss_function(outputs, targets.unsqueeze(1))
             loss.backward()
             optimizer.step()
-        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
 
-    # Save the model after training, .save() is inherited 
-    model.save(model_save_path)
-    print(f"Model saved after training to {model_save_path}")
+        val_loss = validate(model, valid_dataloader, loss_function, device)
+        if val_loss < best_validation_loss:
+            best_validation_loss = val_loss
+        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}")
+
+        early_stopping(val_loss, model)
+        if early_stopping.early_stop:
+            print("Early stopping triggered")
+            break
+
+    if best_validation_loss == early_stopping.val_loss_min:
+        print("Best model saved during training")
+    else:
+        model.save(
+            model_save_path
+        )  # Save at end if the best was not during early stopping
+        print(f"Model saved after training to {model_save_path}")
+
+
+def validate(model, dataloader, loss_function, device):
+    model.eval()
+    total_loss = 0
+    # using .inference_mode() instead of .no_grad()
+    with torch.inference_mode():
+        for inputs, targets in dataloader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            loss = loss_function(outputs, targets.unsqueeze(1))
+            total_loss += loss.item()
+    model.train()
+    return total_loss / len(dataloader)
 
 
 def manage_model_number(save_path, iteration):
@@ -221,6 +258,14 @@ model_save_path = os.path.join(
 
 print("Starting training...")
 
-train_model(model, dataloader, optimizer, loss_function, device, model_save_path)
+train_model(
+    model,
+    train_dataloader,
+    valid_dataloader,
+    optimizer,
+    loss_function,
+    device,
+    model_save_path,
+)
 
 print("Training completed in:", time.time() - START_TIME, "seconds")
