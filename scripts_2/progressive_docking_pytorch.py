@@ -656,38 +656,57 @@ with open(
     "a",
 ) as ref:
     ref.write(
+        # model number, used for logging runs
         str(mn)
         + ","
+        # oversampling ratio
         + str(oss)
         + ","
+        # batch size
         + str(bs)
         + ","
+        # learning rate
         + str(lr)
         + ","
+        # bin array, essentially the NN architecture (the order of hidden layers and dropout layers)
         + str(ba)
         + ","
+        # number of units, i.e. neurons in the hidden layer
         + str(nu)
         + ","
+        # dropout frequency
         + str(df)
         + ","
+        # class weight parameter, because the dataset is imbalanced
         + str(wt)
         + ","
+        # cutoff, the threshold for the docking score
         + str(cf)
         + ","
+        # validation AUC
         + str(auc_vl)
         + ","
+        # validation precision
         + str(pr_vl)
         + ","
+        # total left in library, I think? used to assess generalizability by scaling
+        # the number of molecules left in the test set (Total_left_te) proportionally to the library
+        # you should see a similar number of molecules left in the library as in the test set
         + str(Total_left)
         + ","
+        # testing AUC
         + str(auc_te)
         + ","
+        # testing precision
         + str(pr_te)
         + ","
+        # testing recall
         + str(re_te)
         + ","
+        # Total left in the test set, used with the other total left to assess generalizability
         + str(Total_left_te)
         + ","
+        # positive samples in the test set (original)
         + str(pos_ct_orig)
         + "\n"
     )
