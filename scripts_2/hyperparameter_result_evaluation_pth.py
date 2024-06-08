@@ -55,8 +55,7 @@ hyperparameters = pd.read_csv(SAVE_PATH+'/iteration_'+str(n_iteration)+'/hyperpa
 
 # theses are also declared in progressive_docking.py
 ### TODO: add these columns in progressive_docking.py as a header instead of declaring them here (Line 456)
-hyperparameters.columns = ['Model_no','Over_sampling','Batch_size','Learning_rate','N_layers','N_units','dropout',
-                          'weight','cutoff','ROC_AUC','Pr_0_9','tot_left_0_9_mil','auc_te','pr_te','re_te','tot_left_0_9_mil_te','tot_positives']
+hyperparameters.columns = ['Model_no','Over_sampling','Batch_size','Learning_rate','N_layers','N_units','dropout','weight','cutoff','ROC_AUC','Pr_0_9','tot_left_0_9_mil','auc_te','pr_te','re_te','tot_left_0_9_mil_te','tot_positives']
 
 # Converting total to per million
 hyperparameters.tot_left_0_9_mil = hyperparameters.tot_left_0_9_mil/1000000
@@ -178,6 +177,51 @@ main_thresholds = {}
 all_sc = {}
 path_to_model = SAVE_PATH+'/iteration_'+str(n_iteration)+'/all_models/'
 
+# need a function to handle the hyperparameters our model needs
+def get_hyperparameters(model_no, hyperparameters_df):
+    row = hyperparameters_df[hyperparameters_df["Model_no"] == model_no].iloc[0]
+    n_layers = int(row["N_layers"])  # Get the number of layers
+    bin_array = n_layers * [0, 1]  # Construct bin_array by repeating [0, 1]
+
+    return {
+        "num_units": row["N_units"],
+        "dropout_rate": row["dropout"],
+        "bin_array": bin_array,
+    }
+
+# Assuming hyperparameters are read from CSV earlier in the script
+hyperparameters_df = pd.read_csv(
+    SAVE_PATH
+    + "/iteration_"
+    + str(n_iteration)
+    + "/hyperparameter_morgan_with_freq_v3.csv",
+    header=None,
+)
+hyperparameters_df.columns = [
+    "Model_no",
+    "Over_sampling",
+    "Batch_size",
+    "Learning_rate",
+    "N_layers",
+    "N_units",
+    "dropout",
+    "weight",
+    "cutoff",
+    "ROC_AUC",
+    "Pr_0_9",
+    "tot_left_0_9_mil",
+    "auc_te",
+    "pr_te",
+    "re_te",
+    "tot_left_0_9_mil_te",
+    "tot_positives",
+]
+
+# TODO: This should likely be an input argument or generally be handled better when we save models
+# TODO: in training, we should save the hyperparameters with the model so we don't have to deal with this
+# Assuming input_shape is fixed and known (e.g., 1024 for Morgan fingerprints)
+input_shape = 1024
+
 print('Model_to_use_with_cf:', model_to_use_with_cf)
 for i in range(len(model_to_use_with_cf)):
     cf = model_to_use_with_cf[i][0]
@@ -189,8 +233,8 @@ for i in range(len(model_to_use_with_cf)):
     models = []
     # loading the models matching the cutoff and appending them to the models list
     for mn in model_to_use_with_cf[i][-1]:
-        print('\tLoading model:', path_to_model + '/model_'+str(mn))
-        models.append(DDModel.load(path_to_model+'/model_'+str(mn)))
+        print('\tLoading pth model:', path_to_model + '/model_'+str(mn))
+        models.append(PytorchRefactoredModel.load(path_to_model+'/model_'+str(mn)))
     print('num models:', len(models))
     
     prediction_valid = []
