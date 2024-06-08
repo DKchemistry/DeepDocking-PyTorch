@@ -38,3 +38,10 @@ class PytorchRefactoredModel(nn.Module):
     def save(self, path):
         torch.save(self.state_dict(), path)
         print(f"Model saved to {path}")
+
+    @staticmethod
+    # this is a static method b/c it doesn't need `self` but it is related to handling this class
+    def load(path, input_shape, hyperparameters):
+        model = PytorchRefactoredModel(input_shape, hyperparameters)  # init model
+        model.load_state_dict(torch.load(path)) # load weights into init model based on path
+        return model # return model with loaded weights
