@@ -1,11 +1,57 @@
 import builtins as __builtin__
 import argparse
 
+
 import pandas as pd
 import numpy as np
 import glob
 import os
-# from ML.DDModel import DDModel
+import pynvml
+pynvml.nvmlInit()
+
+
+def select_gpu():
+    device_count = pynvml.nvmlDeviceGetCount()
+    min_memory = float("inf")
+    selected_device = None
+    free_gpu_found = False
+
+    for i in range(device_count):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        procs = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+
+        if len(procs) == 0:
+            print(f"GPU {i} is free of any compute processes. Selecting this GPU.")
+            selected_device = i
+            free_gpu_found = True
+            break
+        elif mem_info.free < min_memory:
+            selected_device = i
+            min_memory = mem_info.free
+
+    if not free_gpu_found:
+        print(
+            f"No completely free GPUs found. Selecting GPU {selected_device} with {min_memory / (1024**3):.2f} GB free memory."
+        )
+    else:
+        print(f"Selected GPU {selected_device} as it is free of compute processes.")
+
+    pynvml.nvmlShutdown()
+    return selected_device
+
+
+selected_gpu = select_gpu()
+os.environ["CUDA_VISIBLE_DEVICES"] = str(selected_gpu)
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
+#! Torch imports have to come after os.environ call.
 from ML.ModelsPytorch import PytorchRefactoredModel
 from sklearn.metrics import auc
 from sklearn.metrics import precision_recall_curve,roc_curve, precision_score, recall_score
@@ -177,7 +223,9 @@ main_thresholds = {}
 all_sc = {}
 path_to_model = SAVE_PATH+'/iteration_'+str(n_iteration)+'/all_models/'
 
+
 # need a function to handle the hyperparameters our model needs
+#! This will need to be removed if we save hyperparameters with the model
 def get_hyperparameters(model_no, hyperparameters_df):
     row = hyperparameters_df[hyperparameters_df["Model_no"] == model_no].iloc[0]
     n_layers = int(row["N_layers"])  # Get the number of layers
@@ -197,11 +245,13 @@ hyperparameters_df = pd.read_csv(
     + "/hyperparameter_morgan_with_freq_v3.csv",
     header=None,
 )
+
 hyperparameters_df.columns = [
     "Model_no",
     "Over_sampling",
     "Batch_size",
     "Learning_rate",
+    # this is what gets multiplied to make the bin_array
     "N_layers",
     "N_units",
     "dropout",
@@ -219,8 +269,21 @@ hyperparameters_df.columns = [
 
 # TODO: This should likely be an input argument or generally be handled better when we save models
 # TODO: in training, we should save the hyperparameters with the model so we don't have to deal with this
-# Assuming input_shape is fixed and known (e.g., 1024 for Morgan fingerprints)
+#!
 input_shape = 1024
+
+
+# Function to generate predictions
+#! This is different than how it is handled in training, no dataloader is used here
+def generate_predictions(model, X_tensor, device):
+    model.eval()
+    with torch.inference_mode():
+        logits = model(X_tensor)
+        probabilities = torch.sigmoid(
+            logits
+        ).squeeze()  # Convert logits to probabilities
+    return probabilities.cpu().numpy()  # Collect predictions and move to CPU
+
 
 print('Model_to_use_with_cf:', model_to_use_with_cf)
 for i in range(len(model_to_use_with_cf)):
@@ -231,20 +294,25 @@ for i in range(len(model_to_use_with_cf)):
     y_valid_cf = y_valid<cf
 
     models = []
+    # Converting the data to tensors, I am not sure if it is the right shape?
+    # In the previous code I only needed to reshape `y` so I am guessing `X` should still be fine.
+    X_valid_tensor = torch.tensor(X_valid, dtype=torch.float32).to(device)
     # loading the models matching the cutoff and appending them to the models list
     for mn in model_to_use_with_cf[i][-1]:
-        print('\tLoading pth model:', path_to_model + '/model_'+str(mn))
-        models.append(PytorchRefactoredModel.load(path_to_model+'/model_'+str(mn)))
+        model_path = path_to_model + "/model_" + str(mn) + "_pth.pt"
+        print("\tLoading Pytorch model:", model_path)
+        hyperparameters = get_hyperparameters(mn, hyperparameters_df)
+        model = PytorchRefactoredModel.load(model_path, input_shape, hyperparameters)
+        models.append(model)
     print('num models:', len(models))
-    
+
     prediction_valid = []
+    # what is scc?
     scc = []
     for model in models:
         print('using valid as validation')
-        model_pred = model.predict(X_valid)
-        if model.output_activation == 'linear':
-            # Converting back to binary values to get stats
-            model_pred = model_pred < cf
+        model.to(device)
+        model_pred = generate_predictions(model, X_valid_tensor, device)
         prediction_valid.append(model_pred)
         precision, recall, thresholds = precision_recall_curve(y_valid_cf, model_pred)
         scc.append([precision, recall, thresholds])
@@ -258,11 +326,10 @@ for i in range(len(model_to_use_with_cf)):
     print('tr:', tr)
 
     prediction_test = []
+    X_test_tensor = torch.tensor(X_test, dtype=torch.float32).to(device)
     for model in models:
-        model_pred = model.predict(X_test)
-        if model.output_activation == 'linear':
-            # Converting back to binary values to get stats
-            model_pred = model_pred < cf
+        model.to(device)
+        model_pred = generate_predictions(model, X_test_tensor, device)
         prediction_test.append(model_pred)
 
     # Calculating the average prediction across the consensus of models. #TODO: change this when dealing with continuous
@@ -279,7 +346,7 @@ for i in range(len(model_to_use_with_cf)):
         fpr_te_avg, tpr_te_avg, thresh_te_avg = roc_curve(y_test_cf, avg_pred)
     else:
         fpr_te_avg, tpr_te_avg, thresh_te_avg = roc_curve(y_test_cf, prediction_test[0])
-    
+
     pr_te_avg = precision_score(y_test_cf, avg_pred)
     re_te_avg = recall_score(y_test_cf, avg_pred)   # TODO: make sure avg_pred is calc properly
 
