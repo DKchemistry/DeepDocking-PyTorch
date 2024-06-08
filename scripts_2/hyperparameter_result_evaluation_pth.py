@@ -406,17 +406,17 @@ for models_cf in model_to_use_with_cf:  # looping through the groups of models t
             count += 1
 
 
-# Deleting all other models that are not in the model_to_use array
-# placed at the bottom so we don't lose all our data each time we run phase 5 and it fails.
-for f in glob.glob(SAVE_PATH+'/iteration_'+str(n_iteration)+'/all_models/*'):
-    try:
-        mn = int(f.split('/')[-1].split('_')[1])
-    except:
-        mn = int(f.split('/')[-1].split('_')[1].split('.')[0])
-    found = False
-    for models in model_to_use_with_cf:
-        if mn in models[-1]:
-            found = True
-            break
-    if not found and "." in f:
-        os.remove(f)
+# # Deleting all other models that are not in the model_to_use array
+# # placed at the bottom so we don't lose all our data each time we run phase 5 and it fails.
+# for f in glob.glob(SAVE_PATH+'/iteration_'+str(n_iteration)+'/all_models/*'):
+#     try:
+#         mn = int(f.split('/')[-1].split('_')[1])
+#     except:
+#         mn = int(f.split('/')[-1].split('_')[1].split('.')[0])
+#     found = False
+#     for models in model_to_use_with_cf:
+#         if mn in models[-1]:
+#             found = True
+#             break
+#     if not found and "." in f:
+#         os.remove(f)
