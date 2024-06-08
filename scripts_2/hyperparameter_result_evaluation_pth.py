@@ -535,11 +535,10 @@ for (
 
             # Copying the specific models by their model_no to the best_models folder
             copy2(
-                path_to_model + "/model_" + str(mod_no),
-                SAVE_PATH + "/iteration_" + str(n_iteration) + "/best_models/",
-            )
-            copy2(
-                path_to_model + "/model_" + str(mod_no) + ".ddss",
+                path_to_model
+                + "/model_"
+                + str(mod_no)
+                + "_pth.pt",  # Ensure the correct file name
                 SAVE_PATH + "/iteration_" + str(n_iteration) + "/best_models/",
             )
 
