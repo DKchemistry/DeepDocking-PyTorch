@@ -1,4 +1,4 @@
-name: pytorch
+name: pth_dd
 channels:
   - plotly
   - pytorch

@@ -1,4 +1,4 @@
-name: Pytorch
+name: pth_dd_mac
 channels:
   - pytorch
   - conda-forge
