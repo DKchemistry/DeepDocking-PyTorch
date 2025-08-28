@@ -1,43 +1,70 @@
-#!/bin/bash
-#SBATCH --cpus-per-task=1
-#SBATCH --partition=normal
-#SBATCH -n 3
-#SBATCH -N 3
-#SBATCH --mem=0 
-#SBATCH --job-name=phase_2
+#!/usr/bin/env bash
+set -euo pipefail
 
-t_nod=$2
+# Usage: bash ./phase_2_glide.sh <iteration> <total_threads> <path_project> <project>
+# Example: bash ./phase_2_glide.sh 1 120 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1
 
-file_path=`sed -n '1p' $3/$4/logs.txt`
-protein=`sed -n '2p' $3/$4/logs.txt`
+iteration="$1"
+total_threads="$2"
+path_project="$3"
+project="$4"
 
-morgan_directory=`sed -n '4p' $3/$4/logs.txt`
-smile_directory=`sed -n '5p' $3/$4/logs.txt`
+logs="$path_project/$project/logs.txt"
+file_path="$(sed -n '1p' "$logs")"
+protein="$(sed -n '2p' "$logs")"
 
-cpu_part=$5
+: "${SLURM_JOB_NAME:=phase_2}"
+python jobid_writer.py -pt "$protein" -fp "$file_path" -n_it "$iteration" -jid "$SLURM_JOB_NAME" -jn "$SLURM_JOB_NAME.txt"
 
-python jobid_writer.py -pt $protein -fp $file_path -n_it $1 -jid $SLURM_JOB_NAME -jn $SLURM_JOB_NAME.txt
+cd "$file_path/$protein/iteration_$iteration"
+mkdir -p sdf
+shopt -s nullglob
 
-cd $file_path/$protein/iteration_$1
-mkdir sdf
-for f in smile/*
-do
-   tmp="$(cut -d'/' -f2 <<<"$f")"
-   tmp="$(cut -d'_' -f1 <<<"$tmp")"
-   if [ $tmp = train ];then name=training;fi
-   if [ $tmp = valid ];then name=validation;fi
-   if [ $tmp = test ];then name=testing;fi
-   echo "#!/bin/bash
-#SBATCH -N 1
-#SBATCH -n 1
+smiles=(smile/*)
+n_jobs=${#smiles[@]}
+if (( n_jobs == 0 )); then
+  echo "No SMILES files under $(pwd)/smile; nothing to do."
+  exit 0
+fi
 
-echo \$1
-echo \$2
-echo \$3
-oeomega classic -in \$1 -out sdf/\$2\_sdf.sdf -maxconfs 1 -strictstereo false -mpi_np \$3 -log \$2.log -prefix \$2 -warts false">>$name'_'conf.sh
+per_job_threads=$(( total_threads / n_jobs ))
+(( per_job_threads < 1 )) && per_job_threads=1
 
-   sbatch -J $SLURM_JOB_NAME -p $cpu_part -c $t_nod $name'_'conf.sh $f $name $t_nod
+make_runner () {
+  local name="$1"
+  local runner="sdf/${name}_conf.sh"
+  cat > "$runner" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+infile="$1"   # relative to iteration dir, e.g. smile/train_*.smi
+name="$2"     # training|validation|testing
+threads="$3"  # threads for LigPrep
+
+# Run from the sdf directory so LigPrep writes outputs here
+cd "$(dirname "$0")"  # now CWD is .../iteration_<n>/sdf
+
+"$SCHRODINGER/ligprep" \
+  -ns -i 2 \
+  -W i,-ph,7.4,-pht,0.0 \
+  -t 1 \
+  -HOST "localhost:$threads" \
+  -ismi "../$infile" \
+  -osd "${name}_sdf.sdf"
+EOF
+  chmod +x "$runner"
+  echo "$runner"
+}
+
+for f in "${smiles[@]}"; do
+  base="$(basename "$f")"
+  case "${base%%_*}" in
+    train) name="training" ;;
+    valid) name="validation" ;;
+    test)  name="testing" ;;
+    *)     echo "Skipping unrecognized file: $f"; continue ;;
+  esac
+  runner="$(make_runner "$name")"
+  bash "$runner" "$f" "$name" "$per_job_threads" &
 done
-wait
 
-scancel $SLURM_JOBID
+wait
