@@ -544,7 +544,7 @@ for (
 
             count += 1
 
-
+#! this is so dangerous
 # # Deleting all other models that are not in the model_to_use array
 # # placed at the bottom so we don't lose all our data each time we run phase 5 and it fails.
 # for f in glob.glob(SAVE_PATH+'/iteration_'+str(n_iteration)+'/all_models/*'):
