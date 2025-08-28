@@ -28,9 +28,10 @@ else:
        pass
 
 if n_it!=-1:
-    ligandfile = file_path+'/'+protein+'/iteration_'+str(n_it)+'/sdf/*'
+    ligandfile = file_path+'/'+protein+'/iteration_'+str(n_it)+'/sdf/*.sdf'
 else:
-    ligandfile = file_path+'/'+protein+'/after_iteration/to_dock'+'/sdf/*'
+    ligandfile = file_path+'/'+protein+'/after_iteration/to_dock'+'/sdf/*.sdf'
+
 
 for f in glob.glob(ligandfile):
     if n_it!=-1:
