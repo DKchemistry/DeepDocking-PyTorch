@@ -46,7 +46,10 @@ parser.add_argument('-plm', '--percent_last_mols', required=True, help='% of top
 # Pass the threshold
 parser.add_argument('-ct', '--recall', required=False, default=0.9, help='Recall, [0,1] range, default value 0.9')
 
-
+# As far as, I (David), understand - this isn't actually used 
+# I won't remove it yet.
+# as maybe it'll be useful, but if you are reading this code for "standard use"
+# I wouldn't worry about this
 funct_flags = parser.add_mutually_exclusive_group(required=False)
 funct_flags.add_argument('-expdec', '--exponential_dec', required=False, default=-1) # must pass in the base number
 funct_flags.add_argument('-polydec', '--polynomial_dec', required=False, default=-1) # You must also pass in to what power for this flag
@@ -77,8 +80,14 @@ SAVE_PATH = io_args.save_path
 if SAVE_PATH is None: SAVE_PATH = DATA_PATH
 
 # sums the first column and divides it by 1 million (this is our total database size)
+# (David) later I need to better explain `Mol_ct_file_%s.csv`
 t_mol = pd.read_csv(mdd+'/Mol_ct_file_%s.csv'%protein,header=None)[[0]].sum()[0]/1000000 # num of compounds in each file is mol_ct_file
 
+# setting up some grid search related possibilies and logic
+# the amount of hyperparameter combinations is set in logs.txt in the specific project directory, this wording can be confusing (project vs protein is often confusing in the docs)
+# example in my directory
+# a "project" = /mnt/data/dk/work/DeepDocking/projects/Manuscript_pytorch_2RH1
+# this directory has logs.txt with 24 as the number of hyperparameters. 
 cummulative = 0.25*n_it
 dropout = [0.2, 0.5]
 learn_rate = [0.0001]
@@ -129,11 +138,12 @@ print(last_mols)
 if n_it==1:
     # 'good_mol' is the number of top scoring molecules to save at the end of the iteration
     good_mol = first_mols
+
 else:
     if exponential_dec != -1:
-        good_mol = int() #TODO: create functions for these
+        good_mol = int() # David: again, not used 
     elif polynomial_dec != -1:
-        good_mol = int()
+        good_mol = int() # David: again, not used
     else:
         good_mol = int(((last_mols-first_mols)*n_it + titr*first_mols-last_mols)/(titr-1))     # linear decrease as interations increase
 
@@ -159,39 +169,54 @@ print('Total molec:', len(scores_val))
 all_hyperparas = []
 
 for o in oss:   # Over Sample Size
-    for batch in bs:
+    for batch in bs: 
         for nu in num_units:
             for do in dropout:
                 for lr in learn_rate:
-                    for ba in bin_array:
+                    # most confusing but this works
+                    # bin array refers to how layers are sequenced
+                    for ba in bin_array: 
                         for w in wt:    # Weight
                             all_hyperparas.append([o,batch,nu,do,lr,ba,w,cf_start])
 
 print('Total hyp:', len(all_hyperparas))
 
-# Creating all the jobs for each hyperparameter combination:
-
-other_args = ' '.join(extra_args) + '-rec {} -n_it {} -t_mol {} --data_path {} --save_path {} -n_mol {}'.format(rec, n_it, t_mol, DATA_PATH, SAVE_PATH, num_molec)
+# Creating all the jobs for each hyperparameter combination 
+# zsh/bash friendly
+# still trying to retain SLURM, but I can't really test this well
+other_args = ' '.join(extra_args) + ' -rec {} -n_it {} -t_mol {} --data_path {} --save_path {} -n_mol {}'.format(
+    rec, n_it, t_mol, DATA_PATH, SAVE_PATH, num_molec
+)
 print(other_args)
+
+job_dir = os.path.join(SAVE_PATH, f'iteration_{n_it}', 'simple_job')
+os.makedirs(job_dir, exist_ok=True)
+
+repo_root = os.getcwd()  # where scripts_2 lives at generation time
+
 count = 1
-for i in range(len(all_hyperparas)):
-    with open(SAVE_PATH+'/iteration_'+str(n_it)+'/simple_job/simple_job_'+str(count)+'.sh', 'w') as ref:
-        ref.write('#!/bin/bash\n')
+for hp in all_hyperparas:
+    job_path = os.path.join(job_dir, f'simple_job_{count}.sh')
+    hyp_args = '-os {} -bs {} -num_units {} -dropout {} -learn_rate {} -bin_array {} -wt {} -cf {}'.format(*hp)
+    with open(job_path, 'w') as ref:
+        ref.write('#!/usr/bin/env bash\n')
+        ref.write('set -euo pipefail\n')
+        # Keep SBATCH lines for reference (harmless under bash)
         ref.write('#SBATCH --ntasks=1\n')
         ref.write('#SBATCH --gres=gpu:1\n')
         ref.write('#SBATCH --cpus-per-task=1\n')
         ref.write('#SBATCH --job-name=phase_4\n')
         ref.write('#SBATCH --mem=0               # memory per node\n')
-        ref.write('#SBATCH --partition=%s\n'%gpu_part)
-        ref.write('#SBATCH --time='+time_model+'            # time (DD-HH:MM)\n')
-        ref.write('\n')
-        cwd = os.getcwd()
-        ref.write('cd {}/scripts_2\n'.format(cwd))
-        hyp_args = '-os {} -bs {} -num_units {} -dropout {} -learn_rate {} -bin_array {} -wt {} -cf {}'.format(*all_hyperparas[i])
-        ref.write('source ~/.bashrc\n')
-        ref.write('conda activate %s\n'%env)
-        ref.write('python -u progressive_docking_pytorch.py ' + hyp_args + ' ' + other_args)
-        ref.write("\n echo complete")
+        ref.write(f'#SBATCH --partition={gpu_part}\n')
+        ref.write(f'#SBATCH --time={time_model}   # time (DD-HH:MM)\n\n')
+        # Dummy SLURM var for code that expects it
+        ref.write('export SLURM_JOB_NAME="${SLURM_JOB_NAME:-phase_4}"\n')
+        # Go to the code folder
+        ref.write(f'cd "{repo_root}/scripts_2"\n')
+        # Assume env already active; just run Python
+        ref.write(f'python -u progressive_docking_pytorch.py {hyp_args} {other_args}\n')
+        ref.write('echo "complete"\n')
+    os.chmod(job_path, 0o755)
     count += 1
-    
+
 print('Runtime:', time.time() - START_TIME)

@@ -3,9 +3,17 @@ import builtins as __builtin__
 import glob
 import gzip
 import os
+import re
 from contextlib import closing
 from multiprocessing import Pool
 
+# Later versions of Glide will write V3000 SDF GZ files
+# And for non-obvious reason, adds a (1) after a score. # Like so: 
+# >  <r_i_docking_score>  (1)
+# -11.5174
+# to deal with this, we need regex to tolerate this
+# this patten captures the field name inside <...>
+FIELD_RX = re.compile(r'>\s*<([^>]+)>')  
 
 # For debugging purposes only:
 def print(*args, **kwargs):
@@ -32,22 +40,39 @@ print("Keyword: ", key_word)
 
 
 def get_scores(ref):
+    """Read an SDF (optionally gz) and collect (zinc_id, score) for key_word.
+    
+    This function now handles both old and new Glide SDF formats:
+    - Old: >  <r_i_docking_score>
+    - New: >  <r_i_docking_score>  (1)
+    
+    Uses regex to robustly extract field names regardless of trailing annotations.
+    """
     scores = []
-    for line in ref:  # Looping through the molecules
-        zinc_id = line.rstrip()
+    while True:
+        zinc_id = ref.readline()
+        if not zinc_id:  # EOF
+            break
+        zinc_id = zinc_id.rstrip()
+        
+        # Walk this molecule's property block until "$$$$"
         line = ref.readline()
-        # '$$$' signifies end of molecule info
-        while line != '' and line[:4] != '$$$$':  # Looping through its information and saving scores
-
-            tmp = line.rstrip().split('<')[-1]
-
-            if key_word == tmp[:-1]:
-                tmpp = float(ref.readline().rstrip())
-                if tmpp > 50 or tmpp < -50:
-                    print(zinc_id, tmpp)
-                else:
-                    scores.append([zinc_id, tmpp])
-
+        while line and not line.startswith('$$$$'):
+            m = FIELD_RX.search(line)
+            if m and m.group(1).strip() == key_word:
+                # next line is the value
+                val_line = ref.readline()
+                try:
+                    tmpp = float(val_line.strip().split()[0])
+                    if -50 <= tmpp <= 50:
+                        scores.append([zinc_id, tmpp])
+                    else:
+                        print(zinc_id, tmpp)  # out-of-range debug, keep your behavior
+                except ValueError:
+                    pass  # non-numeric; ignore
+                # continue scanning remaining props of this molecule
+                line = ref.readline()
+                continue
             line = ref.readline()
     return scores
 

@@ -1,7 +1,6 @@
 import glob
 import gc
 import argparse
-import pynvml
 import os
 import random
 import sys
@@ -10,38 +9,133 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import precision_recall_curve, roc_curve, auc
 
-pynvml.nvmlInit()
+import pynvml  # MIG-aware GPU picker uses NVML
+
+# Being nice to coworkers and sensitive GPUsL
+DISALLOWED_NAME_BITS = ["T1000"]            # never run on cards whose name contains these
+FORBIDDEN_CMD_BITS   = ["gdesmond", "icm64.bin"]  # skip devices running these jobs
+REQUIRE_MIN_FREE_GB  = 0.0                  # i might want to change this
+
+def read_cmdline(pid: int) -> str:
+    """Best-effort: read a process cmdline from /proc (covers nvidia-smi truncation)."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read().replace(b"\x00", b" ").strip()
+        return raw.decode(errors="ignore")
+    except Exception:
+        return ""
+
+def name_is_disallowed(name: str) -> bool:
+    name_l = name.lower()
+    return any(bit.lower() in name_l for bit in DISALLOWED_NAME_BITS)
+
+def handle_has_forbidden_jobs(dev_handle) -> bool:
+    """True if any CUDA process on this device (GPU or MIG) matches FORBIDDEN_CMD_BITS."""
+    try:
+        procs = pynvml.nvmlDeviceGetComputeRunningProcesses_v3(dev_handle)
+    except AttributeError:
+        procs = pynvml.nvmlDeviceGetComputeRunningProcesses(dev_handle)
+    for p in procs:
+        cmd = read_cmdline(p.pid).lower()
+        for bad in FORBIDDEN_CMD_BITS:
+            b = bad.lower()
+            if b in cmd or cmd.endswith(b):
+                return True
+    return False
 
 def select_gpu():
-    device_count = pynvml.nvmlDeviceGetCount()
-    min_memory = float("inf")
-    selected_device = None
-    free_gpu_found = False
+    """
+    Implements:
+      1) skip disallowed GPU names (e.g., T1000) more can be added
+      2) skip GPUs/MIG devices running Desmond/ICM
+      3) choose remaining candidate with the MOST free memory
+    Returns a string for CUDA_VISIBLE_DEVICES:
+      - whole GPU -> index string like "0"
+      - MIG device -> its MIG UUID like "MIG-xxxx"
+    """
+    pynvml.nvmlInit()
+    try:
+        # Detect if pynvml exposes MIG calls
+        mig_ok = all(
+            hasattr(pynvml, fn) for fn in [
+                "nvmlDeviceGetMigMode",
+                "nvmlDeviceGetMaxMigDeviceCount",
+                "nvmlDeviceGetMigDeviceHandleByIndex",
+            ]
+        )
 
-    for i in range(device_count):
-        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        procs = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
-        
-        if len(procs) == 0:
-            print(f"GPU {i} is free of any compute processes. Selecting this GPU.")
-            selected_device = i
-            free_gpu_found = True
-            break
-        elif mem_info.free < min_memory:
-            selected_device = i
-            min_memory = mem_info.free
+        device_count = pynvml.nvmlDeviceGetCount()
+        candidates = []  # list of (free_bytes, cuda_visible_value, human_label)
 
-    if not free_gpu_found:
-        print(f"No completely free GPUs found. Selecting GPU {selected_device} with {min_memory / (1024**3):.2f} GB free memory.")
-    else:
-        print(f"Selected GPU {selected_device} as it is free of compute processes.")
+        print("[GPU-SELECT] scanning GPUs{}..."
+              .format(" and MIG devices" if mig_ok else ""))
 
-    pynvml.nvmlShutdown()
-    return selected_device
+        for i in range(device_count):
+            gpu = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(gpu)
+            if isinstance(name, bytes):
+                name = name.decode()
 
-selected_gpu = select_gpu()
-os.environ["CUDA_VISIBLE_DEVICES"] = str(selected_gpu)
+            if name_is_disallowed(name):
+                print(f"  - GPU {i} '{name}': SKIP (disallowed by name)")
+                continue
+
+            # If we can query MIG, check per-MIG device; otherwise treat whole GPU
+            if mig_ok:
+                mode, _ = pynvml.nvmlDeviceGetMigMode(gpu)  # 0=disabled, 1=enabled
+            else:
+                mode = 0
+
+            if mode == 0:
+                mem = pynvml.nvmlDeviceGetMemoryInfo(gpu)
+                free_gb = mem.free / (1024**3)
+                if free_gb < REQUIRE_MIN_FREE_GB:
+                    print(f"  - GPU {i} '{name}': SKIP ({free_gb:.1f} GB free; need >= {REQUIRE_MIN_FREE_GB:.1f})")
+                elif handle_has_forbidden_jobs(gpu):
+                    print(f"  - GPU {i} '{name}': SKIP (forbidden job detected)")
+                else:
+                    print(f"  - GPU {i} '{name}': OK (free ~{free_gb:.1f} GB)")
+                    candidates.append((mem.free, str(i), f"GPU {i} '{name}'"))
+            else:
+                print(f"  - GPU {i} '{name}': MIG ENABLED — checking MIG devices")
+                max_migs = pynvml.nvmlDeviceGetMaxMigDeviceCount(gpu)
+                any_ok = False
+                for mig_idx in range(max_migs):
+                    try:
+                        mig = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(gpu, mig_idx)
+                    except pynvml.NVMLError:
+                        continue  # empty slot
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(mig)
+                    free_gb = mem.free / (1024**3)
+                    if free_gb < REQUIRE_MIN_FREE_GB:
+                        print(f"      • MIG[{mig_idx}]: SKIP ({free_gb:.1f} GB free)")
+                        continue
+                    if handle_has_forbidden_jobs(mig):
+                        print(f"      • MIG[{mig_idx}]: SKIP (forbidden job detected)")
+                        continue
+                    uuid = pynvml.nvmlDeviceGetUUID(mig)
+                    if isinstance(uuid, bytes): uuid = uuid.decode()
+                    any_ok = True
+                    print(f"      • MIG[{mig_idx}] {uuid}: OK (free ~{free_gb:.1f} GB)")
+                    candidates.append((mem.free, uuid, f"GPU {i} MIG[{mig_idx}] {uuid}"))
+                if not any_ok:
+                    print(f"      • (no available MIG devices on GPU {i})")
+
+        if not candidates:
+            raise SystemExit("[GPU-SELECT] No allowed GPU/MIG available (all blocked or disallowed).")
+
+        # Pick the MOST free memory
+        free_bytes, cuda_visible_value, label = max(candidates, key=lambda c: c[0])
+        free_gb = free_bytes / (1024**3)
+        print(f"[GPU-SELECT] choosing {label} (free ~{free_gb:.1f} GB).")
+        return cuda_visible_value
+    finally:
+        pynvml.nvmlShutdown()
+
+# Choose device and expose it to CUDA (index for whole GPU, MIG UUID for MIG)
+selected_device = select_gpu()
+os.environ["CUDA_VISIBLE_DEVICES"] = str(selected_device)
+print(f"[GPU-SELECT] set CUDA_VISIBLE_DEVICES={selected_device}")
 
 # Torch imports have to come after os.environ call.
 import torch
