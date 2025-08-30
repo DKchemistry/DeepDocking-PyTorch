@@ -1,57 +1,144 @@
 import builtins as __builtin__
 import argparse
-
-
 import pandas as pd
 import numpy as np
 import glob
 import os
-import pynvml
+import pynvml  # NVML for GPU/MIG selection
 
-pynvml.nvmlInit()
+# --- GPU selection (MIG-aware; same policy as phase_4) ---
+DISALLOWED_NAME_BITS = ["T1000"]            # never run here
+FORBIDDEN_CMD_BITS   = ["gdesmond", "icm64.bin"]  # skip devices running these
+REQUIRE_MIN_FREE_GB  = 0.0
 
+def read_cmdline(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read().replace(b"\x00", b" ").strip()
+        return raw.decode(errors="ignore").lower()
+    except Exception:
+        return ""
+
+def name_is_disallowed(name: str) -> bool:
+    nl = name.lower()
+    return any(bit.lower() in nl for bit in DISALLOWED_NAME_BITS)
+
+def handle_has_forbidden_jobs(handle) -> bool:
+    """True if any CUDA process on this device (GPU or MIG) matches FORBIDDEN_CMD_BITS."""
+    try:
+        procs = pynvml.nvmlDeviceGetComputeRunningProcesses_v3(handle)  # newer NVML
+    except Exception:
+        procs = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+    for p in procs:
+        pid = getattr(p, "pid", None)
+        if pid is None:
+            continue
+        cmd = read_cmdline(pid)
+        if any(cmd.endswith(bad) or bad in cmd for bad in FORBIDDEN_CMD_BITS):
+            return True
+    return False
 
 def select_gpu():
-    device_count = pynvml.nvmlDeviceGetCount()
-    min_memory = float("inf")
-    selected_device = None
-    free_gpu_found = False
+    """
+    Skip disallowed GPU names (e.g., T1000), skip GPUs/MIG devices running Desmond/ICM,
+    choose candidate with the MOST free memory. Returns CUDA_VISIBLE_DEVICES value:
+      - whole GPU -> index string like "0"
+      - MIG device -> its MIG UUID like "MIG-xxxx"
+    """
+    pynvml.nvmlInit()
+    try:
+        mig_ok = all(hasattr(pynvml, fn) for fn in [
+            "nvmlDeviceGetMigMode",
+            "nvmlDeviceGetMaxMigDeviceCount",
+            "nvmlDeviceGetMigDeviceHandleByIndex",
+        ])
 
-    for i in range(device_count):
-        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        procs = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+        device_count = pynvml.nvmlDeviceGetCount()
+        candidates = []  # list of (free_bytes, cuda_visible_value, human_label)
 
-        if len(procs) == 0:
-            print(f"GPU {i} is free of any compute processes. Selecting this GPU.")
-            selected_device = i
-            free_gpu_found = True
-            break
-        elif mem_info.free < min_memory:
-            selected_device = i
-            min_memory = mem_info.free
+        print("[GPU-SELECT] scanning GPUs{}..."
+              .format(" + MIG" if mig_ok else ""))
 
-    if not free_gpu_found:
-        print(
-            f"No completely free GPUs found. Selecting GPU {selected_device} with {min_memory / (1024**3):.2f} GB free memory."
-        )
-    else:
-        print(f"Selected GPU {selected_device} as it is free of compute processes.")
+        for i in range(device_count):
+            gpu = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(gpu)
+            if isinstance(name, bytes):
+                name = name.decode()
 
-    pynvml.nvmlShutdown()
-    return selected_device
+            if name_is_disallowed(name):
+                print(f"  - GPU {i} '{name}': SKIP (disallowed by name)")
+                continue
 
+            mode = 0
+            if mig_ok:
+                try:
+                    mode, _ = pynvml.nvmlDeviceGetMigMode(gpu)  # 0=disabled, 1=enabled
+                except Exception:
+                    mode = 0
+
+            if mode == 0:
+                mem = pynvml.nvmlDeviceGetMemoryInfo(gpu)
+                free_gb = mem.free / (1024**3)
+                if free_gb < REQUIRE_MIN_FREE_GB:
+                    print(f"  - GPU {i} '{name}': SKIP ({free_gb:.1f} GB free; need >= {REQUIRE_MIN_FREE_GB:.1f})")
+                elif handle_has_forbidden_jobs(gpu):
+                    print(f"  - GPU {i} '{name}': SKIP (forbidden job detected)")
+                else:
+                    print(f"  - GPU {i} '{name}': OK (~{free_gb:.1f} GB free)")
+                    candidates.append((mem.free, str(i), f"GPU {i} '{name}'"))
+            else:
+                print(f"  - GPU {i} '{name}': MIG enabled — checking instances")
+                try:
+                    max_migs = pynvml.nvmlDeviceGetMaxMigDeviceCount(gpu)
+                except Exception:
+                    max_migs = 0
+                any_ok = False
+                for mig_idx in range(max_migs):
+                    try:
+                        mig = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(gpu, mig_idx)
+                    except Exception:
+                        continue  # empty slot
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(mig)
+                    free_gb = mem.free / (1024**3)
+                    if free_gb < REQUIRE_MIN_FREE_GB:
+                        print(f"      • MIG[{mig_idx}]: SKIP ({free_gb:.1f} GB free)")
+                        continue
+                    if handle_has_forbidden_jobs(mig):
+                        print(f"      • MIG[{mig_idx}]: SKIP (forbidden job)")
+                        continue
+                    uuid = pynvml.nvmlDeviceGetUUID(mig)
+                    if isinstance(uuid, bytes):
+                        uuid = uuid.decode()
+                    any_ok = True
+                    print(f"      • MIG[{mig_idx}] {uuid}: OK (~{free_gb:.1f} GB free)")
+                    candidates.append((mem.free, uuid, f"GPU {i} MIG[{mig_idx}] {uuid}"))
+                if not any_ok:
+                    print(f"      • (no available MIG devices on GPU {i})")
+
+        if not candidates:
+            raise SystemExit("[GPU-SELECT] No allowed GPU/MIG available (all blocked or disallowed).")
+
+        free_bytes, cuda_visible_value, label = max(candidates, key=lambda c: c[0])
+        free_gb = free_bytes / (1024**3)
+        print(f"[GPU-SELECT] choosing {label} (~{free_gb:.1f} GB free)")
+        return cuda_visible_value
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
 
 selected_gpu = select_gpu()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(selected_gpu)
+print(f"[GPU-SELECT] set CUDA_VISIBLE_DEVICES={selected_gpu}")
 
+# --- torch must be imported after CUDA_VISIBLE_DEVICES is set ---
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
-
 
 #! Torch imports have to come after os.environ call.
 from ML.ModelsPytorch import PytorchRefactoredModel
@@ -65,7 +152,6 @@ from sklearn.metrics import (
 from shutil import copy2
 
 import warnings
-
 warnings.filterwarnings("ignore")
 
 
@@ -126,13 +212,14 @@ if SAVE_PATH is None:
 
 print("Done importing.")
 
-# Gets the total number of molecules (SEE: simple_job_models.py, line 32)
+# there was a comment here about checking a file that doesn't exist
 total_mols = (
     pd.read_csv(mdd + "/Mol_ct_file_%s.csv" % protein, header=None)[[0]].sum()[0]
     / 1000000
 )
 
 # reading in the file created in progressive_docking.py (line 456)
+# line is definitely wrong because we're in the pytorch reactor but the general sentiment is true
 hyperparameters = pd.read_csv(
     SAVE_PATH
     + "/iteration_"
@@ -143,7 +230,7 @@ hyperparameters = pd.read_csv(
 )
 
 # theses are also declared in progressive_docking.py
-### TODO: add these columns in progressive_docking.py as a header instead of declaring them here (Line 456)
+# yep but pytorch 
 hyperparameters.columns = [
     "Model_no",
     "Over_sampling",
@@ -180,9 +267,12 @@ df_grouped_cf = hyperparameters.groupby(
     "cutoff"
 )  # Groups them according to cutoff values for calculations
 
-cf_values = {}  # Cutoff values (thresholds for validation set virtual hits)
+# we gotta fix this I think, because we do not use multiple cutoffs 
+cf_values = {}  
 
-print("Got Hyperparams")
+print("Got Hyperparamaters from pytorch_hyperparameter_morgan_with_freq_v3.csv")
+
+#! this part is confusing because of the cf_values, we only ever have one docking score cut off, we should never have more than one, so the three-way selection shouldnt happen
 # Looping through each group and printing mean and std for that particular cuttoff value
 for mini_df in df_grouped_cf:
     print(mini_df[0])  # the cutoff value for the group
@@ -286,7 +376,7 @@ zinc_labels_test = get_zinc_and_labels(
     main_path + "/testing_labels.txt",
 )
 
-print("Generating test, and valid data")
+print("Getting the test, and valid data")
 # Getting the x data from the zinc ids (x=input, y=labels)
 # decompresses the indexes to 1024 bit vector
 X_valid, y_valid = get_all_x_data(
@@ -296,13 +386,22 @@ X_test, y_test = get_all_x_data(
     main_path + "/morgan/test_morgan_1024_updated.csv", zinc_labels_test
 )
 
+#! Temporary test! 
+import numpy as _np
+print(f"Shapes — X_valid {X_valid.shape}, y_valid {y_valid.shape}, X_test {X_test.shape}, y_test {y_test.shape}")
+y_valid = y_valid.reshape(-1)
+y_test  = y_test.reshape(-1)
+print(f"Flattened labels — y_valid {y_valid.shape}, y_test {y_test.shape}")
+print(f"NumPy version: {_np.__version__}")
+
+
+#! Changing for numpy safety  
 print("Reducing models,", len(model_to_use_with_cf))
 for i in range(len(model_to_use_with_cf)):
     cf = model_to_use_with_cf[i][0]
-    n_good_mol = len(
-        [x for x in y_valid if x < cf]
-    )  # num of molec that are under the cutoff value
-    print("\t", "cf:", cf)
+    # number of molecules that are under the docking score cutoff value
+    n_good_mol = int(np.sum(y_valid < cf))
+    print("\t", "cf:", cf, "n_good_mols_in_valid:", n_good_mol)
 
     # If not enough molecules exceed the cutoff then we only save one of the models and ignore the rest
     if n_good_mol <= 10000:
@@ -363,9 +462,9 @@ hyperparameters_df.columns = [
     "tot_positives",
 ]
 
-# TODO: This should likely be an input argument or generally be handled better when we save models
-# TODO: in training, we should save the hyperparameters with the model so we don't have to deal with this
-#!
+
+#! For now, we are not changing fingerprint size (1024) 
+#! so feature shape is fixed 
 input_shape = 1024
 
 
@@ -469,9 +568,15 @@ for i in range(len(model_to_use_with_cf)):
 
     print(cf, re_te_avg, pr_te_avg, auc_te_avg, pos_ct_orig / t_train_mol)
 
-    total_left_te = (
-        re_te_avg * pos_ct_orig / pr_te_avg * total_mols * 1000000 / t_train_mol
-    )  # molecules left
+        # Guard: if precision is 0, treat as infinite molecules left (model is useless for narrowing the library)
+    if pr_te_avg == 0:
+        total_left_te = float("inf")
+        print(f"precision==0 at cutoff {cf} → total_left_te=inf")
+    else:
+        total_left_te = (
+            re_te_avg * pos_ct_orig / pr_te_avg * total_mols * 1_000_000 / t_train_mol
+        )
+
     all_sc[cf] = [cf, re_te_avg, pr_te_avg, auc_te_avg, total_left_te]
     cf_with_left[cf] = total_left_te
 
