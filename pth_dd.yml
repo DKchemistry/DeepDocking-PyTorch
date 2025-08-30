@@ -147,6 +147,7 @@ dependencies:
   - networkx=3.1=py312h06a4308_0
   - numpy=1.26.4=py312hc5e2394_0
   - numpy-base=1.26.4=py312h0da6c21_0
+  - nvidia-ml-py=12.575.51=pyhd8ed1ab_0
   - openh264=2.1.1=h4ff587b_0
   - openjpeg=2.4.0=h3ad879b_0
   - openssl=3.3.0=hd590300_0
@@ -169,6 +170,7 @@ dependencies:
   - pure_eval=0.2.2=pyhd8ed1ab_0
   - pycairo=1.26.0=py312he48a392_0
   - pygments=2.17.2=pyhd8ed1ab_0
+  - pynvml=12.0.0=pyhd8ed1ab_0
   - pyparsing=3.0.9=py312h06a4308_0
   - pyqt=5.15.10=py312h6a678d5_0
   - pyqt5-sip=12.13.0=py312h5eee18b_0
@@ -231,10 +233,9 @@ dependencies:
   - zlib=1.2.13=hd590300_5
   - zstd=1.5.5=hc292b87_0
   - pip:
-    - alembic==1.13.1
-    - colorlog==6.8.2
-    - mako==1.3.2
-    - nvidia-ml-py3==7.352.0
-    - optuna==3.6.1
-    - tqdm==4.66.2
-prefix: /mnt/data/dk/miniconda3/envs/pytorch
+      - alembic==1.13.1
+      - colorlog==6.8.2
+      - mako==1.3.2
+      - optuna==3.6.1
+      - tqdm==4.66.2
+prefix: /home/dk/miniconda3/envs/pth_dd
