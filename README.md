@@ -31,3 +31,7 @@ Professor Gentile and I found the differences in performance minor, though we ca
 
 Recently, there was some encouragement to have this implementation functional on our machines across the semi-automated phases and this is currently in progress. 
 
+## Documentation 
+
+Hopefully, we can upload a pre-prepared library that we have enumerated that is being using in testing, as well as the project directory that my current testing corresponds too, initial library preparation and fingerprinting are unchanged from the original implementation. 
+
