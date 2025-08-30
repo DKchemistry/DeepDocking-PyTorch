@@ -29,8 +29,11 @@ python jobid_writer.py -pt $protein -fp $file_path -n_it $1 -jid $SLURM_JOB_NAME
 
 echo "Starting Evaluation"
 python -u scripts_2/hyperparameter_result_evaluation_pth.py -n_it $1 -d_path $file_path/$protein -mdd $morgan_directory -n_mol $num_molec -ct $4
-# echo "Creating simple_job_predictions"
-# python scripts_2/simple_job_predictions.py -pt $protein -fp $file_path -n_it $1 -mdd $morgan_directory -gp $gpu_part -tf_e $env
+echo "Creating simple_job_predictions"
+python scripts_2/simple_job_predictions_pth.py -pt $protein -fp $file_path -n_it $1 -mdd $morgan_directory -gp $gpu_part -tf_e $env
+# the pain of not having slurm: execute them safely in parallel (auto-detect GPU/MIG count)
+python -u scripts_2/run_predictions_local.py --jobs-dir "$file_path/$protein/iteration_$1/simple_job_predictions"
+
 
 # cd $file_path/$protein/iteration_$1/simple_job_predictions/
 # echo "running simple_jobs"
