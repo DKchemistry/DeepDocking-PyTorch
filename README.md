@@ -114,7 +114,7 @@ bash ./phase_4_pth.sh 1 3 /mnt/data/dk/work/DeepDocking/projects Manuscript_pyto
 
 (typically its 11 iterations, typo in my initial testing)
 
-`phase_5_pth.sh` is also quite different and is functional in terms of output, though the manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking. I find it useful in testing currently but it would likely need to be amended in the future, as my testing has been in ~70M range for the fingerprinted library and prospective is more helpful on the >1B scale. Currently, this does execute GPU training on launch. 
+`phase_5_pth.sh` is also quite different and is functional in terms of output, though the manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking and chunks them at 250K at a time for inference. I find it useful in testing currently but it would likely need to be amended in the future, as my testing has been in ~70M range for the fingerprinted library and prospective is more helpful on the >1B scale, where this would be too slow. This does execute GPU inference on launch. 
 
 ```sh
 conda activate pth_dd
