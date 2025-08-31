@@ -43,13 +43,9 @@ threads="$3"  # threads for LigPrep
 # Run from the sdf directory so LigPrep writes outputs here
 cd "$(dirname "$0")"  # now CWD is .../iteration_<n>/sdf
 
-"$SCHRODINGER/ligprep" \
-  -ns -i 2 \
-  -W i,-ph,7.4,-pht,0.0 \
-  -t 1 \
-  -HOST "localhost:$threads" \
-  -ismi "../$infile" \
-  -osd "${name}_sdf.sdf"
+#! edit ligprep command here, just paste in the parameters. 
+#! this one is what I want to use for the comparison to my old results
+ligprep -ns -i 0 -nt -HOST "localhost:$threads" -ismi "../$infile" -osd "${name}_sdf.sdf"
 EOF
   chmod +x "$runner"
   echo "$runner"
