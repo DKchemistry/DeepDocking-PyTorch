@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # phase_4_pth.sh — write simple jobs (runs fine without SLURM)
-# Positional args for use sanity :) 
+# Positional args for my sanity :) 
 #   $1  current_iteration
 #   $2  t_pos (CPUs)
 #   $3  path_project
@@ -33,7 +33,7 @@ rec="$9"
 : "${SLURM_JOB_NAME:=phase_4}"
 export SLURM_JOB_NAME
 
-# optional: try to activate the env; if this fails, we continue (preferable that we pre-activated)
+# try to activate the env; if this fails, we continue (you should definitely activate)
 if command -v conda >/dev/null 2>&1; then
   # shellcheck disable=SC1091
   source "$(conda info --base)/etc/profile.d/conda.sh" || true
@@ -86,4 +86,37 @@ python scripts_2/simple_job_models_pth.py \
   -tf_e "$env" \
   -isl "$last"
 
-echo "Done."
+# python makes these files and we make a dir variable
+sj_dir="$file_path/$protein/iteration_${1}/simple_job"
+
+#say that we are launching unless there is simple job dir, very unliklely but fine
+echo "Launching simple jobs from: $sj_dir"
+if [[ ! -d "$sj_dir" ]]; then
+  echo "ERROR: directory not found: $sj_dir"; exit 1
+fi
+
+# if a glob doesn’t match anything, expand to nothing instead of the literal pattern
+# and I mean literal, jobs (bash array) would contain these characters: "simple_job_*.sh"
+# this global so we will turn it off
+shopt -s nullglob
+# makes a bash array (like a python list)
+jobs=( "$sj_dir"/simple_job_*.sh )
+shopt -u nullglob
+
+# check if we have the scripts
+if (( ${#jobs[@]} == 0 )); then
+  echo "No simple_job_*.sh scripts found in $sj_dir"; exit 1
+fi
+
+# make executable
+chmod +x "${jobs[@]}"
+
+# fire the jobs with logged output, sleep one second in between (later we may want something smarter but right now this is fine)
+for j in "${jobs[@]}"; do
+  echo "Starting $j"
+  "$j" > "${j}.log" 2>&1 &
+  sleep 1
+done
+
+wait
+echo "All jobs finished (or crashed) check how many you expect to have been added to pytorch_hyperparameter_morgan_with_freq_v3.csv based on the job set up for a quick sanity check."

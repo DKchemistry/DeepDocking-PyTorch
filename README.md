@@ -93,7 +93,10 @@ bash ./phase_3_glide.sh 1 150 /mnt/data/dk/work/DeepDocking/projects Manuscript_
 
 Here, each test/train/valid docking job will get `localhost:50` and `-NJOBS 150`. I have encountered one split finishing much faster than others despite equal splitting in the number of ligands to dock, I hadn't experienced this before, so it may be more prudent to set this up differently. 
 
-`phase_4_pth.sh` is fairly different as it now relies on pytorch model and associated code. The output is mostly the same. Tensorboard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simply some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior tensorflow versions and is used for inference in phase 5. The script does not automatically run the `simple_jobs_N.sh` scripts created currently, relying on the user to do so from that from `interation_n/simple_job` directory. This will likely change later. The arugments related to slurm are "dummy" arguments to keep other processes happy, as SLURM is not being used here. 
+`phase_4_pth.sh` is fairly different as it now relies on pytorch model and associated code. The output is mostly the same. Tensorboard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simply some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior tensorflow versions and is used for inference in phase 5. The script runs the `simple_job_N.sh` jobs with a simple wait. This works well in my system but you may want to comment out automatic execution or otherwise modify it, with 24 hyperparameter sets, an A100 80GB available, and about ~1.5M compounds in training/testing/validation: I have hit about 17% total usage via nvitop. At very large scales, I would imagine a crash without a more careful job execution system.
+
+
+The arugments related to slurm's gpu partition are "dummy" arguments to keep other processes happy, as SLURM is not being used here. pyNVML tries to find the GPU that isn't "banned" and then has the most available memory. You can see how that works in `scripts_2/progressive_docking_pytorch.py` and edit it to your needs.
 
 ```sh
 conda activate pth_dd
@@ -109,7 +112,7 @@ SLURM_JOB_NAME=phase_4
 bash ./phase_4_pth.sh 1 3 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 dummy 10 1 0.01 0.9 00-15:00 pth_dd
 ```
 
-(typically its 11 iterations)
+(typically its 11 iterations, typo in my initial testing)
 
 `phase_5_pth.sh` is also quite different and is functional in terms of output, though the manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking. I find it useful in testing currently but it would likely need to be amended in the future, as my testing has been in ~70M range for the fingerprinted library and prospective is more helpful on the >1B scale. Currently, this does execute GPU training on launch. 
 
