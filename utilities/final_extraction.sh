@@ -1,20 +1,36 @@
-#!/bin/bash
-#SBATCH --partition=normal
-#SBATCH --cpus-per-task=60     #change this to match the number of processors you want to use
-#SBATCH --job-name=extract
+#!/usr/bin/env bash
+set -e
 
-source ~/.bashrc
-conda activate $5
+SMILES_DIR="$1"
+PRED_DIR="$2"
+PROCS="$3"
+MOLS_TO_DOCK="${4:-all_mol}"
+CONDA_ENV="$5"     # e.g. pth_dd
+ITER_DIR="$6"
 
-start=`date +%s`
-
-if [ $4 = 'all_mol' ]; then
-   echo "Extracting all SMILES"
-   python final_extraction.py -smile_dir $1 -prediction_dir $2 -processors $3
+# make conda available in this non-interactive bash
+if command -v conda >/dev/null 2>&1; then
+    eval "$(conda shell.bash hook)"
+    conda activate "$CONDA_ENV"
 else
-   python final_extraction.py -smile_dir $1 -prediction_dir $2 -processors $3 -mols_to_dock $4
+    echo "conda not found on PATH. Make sure conda is installed and on PATH."
+    exit 1
 fi
 
-end=`date +%s`
-runtime=$((end-start))
-echo $runtime
+OUT_DIR="${ITER_DIR%/}/final_extraction"
+mkdir -p "$OUT_DIR"
+
+if [ "$MOLS_TO_DOCK" = "all_mol" ]; then
+  python final_extraction.py \
+    -smile_dir "$SMILES_DIR" \
+    -prediction_dir "$PRED_DIR" \
+    -processors "$PROCS" \
+    -output_dir "$OUT_DIR"
+else
+  python final_extraction.py \
+    -smile_dir "$SMILES_DIR" \
+    -prediction_dir "$PRED_DIR" \
+    -processors "$PROCS" \
+    -mols_to_dock "$MOLS_TO_DOCK" \
+    -output_dir "$OUT_DIR"
+fi

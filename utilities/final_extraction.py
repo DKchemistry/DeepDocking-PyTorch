@@ -10,82 +10,110 @@ import os
 def merge_on_smiles(pred_file):
     print("Merging " + os.path.basename(pred_file) + "...")
 
-    # Read the predictions
+    # Read the predictions: CSV, no header, id,score
     pred = pd.read_csv(pred_file, names=["id", "score"])
-    pred.drop_duplicates()
+    pred = pred.drop_duplicates()
 
-    # Read the smiles
+    # Matching smiles file has the same basename, space-delimited: smile id
     smile_file = os.path.join(args.smile_dir, os.path.basename(pred_file))
     smi = pd.read_csv(smile_file, delimiter=" ", names=["smile", "id"])
     smi = smi.drop_duplicates()
-    return pd.merge(pred, smi, how="inner", on=["id"]).set_index("id")
+
+    merged = pd.merge(pred, smi, how="inner", on=["id"]).set_index("id")
+    return merged
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-smile_dir", required=True, help='Path to SMILES directory for the database')
-    parser.add_argument("-prediction_dir", required=True, help='Path to morgan_1024_predicitions of last iteration')
-    parser.add_argument("-processors", required=True, help='Number of CPUs for multiprocessing')
-    parser.add_argument("-mols_to_dock", required=False, type=int, help='Desired number of molecules to dock')
+    parser.add_argument(
+        "-smile_dir", required=True, help="Path to SMILES directory for the database"
+    )
+    parser.add_argument(
+        "-prediction_dir",
+        required=True,
+        help="Path to morgan_1024_predictions of last iteration",
+    )
+    parser.add_argument(
+        "-processors", required=True, help="Number of CPUs for multiprocessing"
+    )
+    parser.add_argument(
+        "-mols_to_dock",
+        required=False,
+        type=int,
+        help="Desired number of molecules to dock",
+    )
+    parser.add_argument(
+        "-output_dir",
+        required=True,
+        help="Directory where smiles.csv and id_score.csv will be written",
+    )
 
     args = parser.parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
+
     predictions = []
 
-    # Find all smile files
-    print("Morgan Dir: " + args.prediction_dir)
-    print("Smile Dir: " + args.smile_dir)
-    for file in glob.glob(args.prediction_dir + "/*"):
+    print("Prediction dir: " + args.prediction_dir)
+    print("SMILES dir: " + args.smile_dir)
+
+    # discover prediction files
+    for file in glob.glob(os.path.join(args.prediction_dir, "*")):
+        # keep the old heuristic: only files that have "smile" in their name
         if "smile" in os.path.basename(file):
             print(" - " + os.path.basename(file))
             predictions.append(file)
 
-    # Create a list of pandas dataframes
+    if not predictions:
+        raise RuntimeError(
+            "No prediction files found matching pattern '*smile*' in "
+            f"{args.prediction_dir}"
+        )
+
     print("Finding smiles...")
-    print(int(args.processors), len(predictions))
-    print("Number of CPUs: " + str(multiprocessing.cpu_count()))
     num_jobs = min(len(predictions), int(args.processors))
-    print(num_jobs)
+    print(
+        f"Using {num_jobs} workers (requested {args.processors}, found {len(predictions)} files)"
+    )
+    print("Machine has", multiprocessing.cpu_count(), "CPUs")
+
     with closing(Pool(num_jobs)) as pool:
         combined = pool.map(merge_on_smiles, predictions)
 
-    # combine all dataframes
-    print("Combining " + str(len(combined)) + " dataframes...")
-    base = pd.concat(combined)
+    # combine
+    print("Combining", len(combined), "dataframes...")
+    base = pd.concat(combined, axis=0)
     combined = None
 
-    print("Done combining... Sorting!")
+    print("Sorting by score (descending)...")
     base = base.sort_values(by="score", ascending=False)
-
-    print("Resetting Index...")
     base.reset_index(inplace=True)
 
-    print("Finished Sorting... Here is the base:")
-    print(base.head())
-
+    # optional truncation
     if args.mols_to_dock is not None:
         mtd = args.mols_to_dock
         print("Molecules to dock:", mtd)
         print("Total molecules:", len(base))
-
-        if len(base) <= mtd:
-            print("Our total molecules are less or equal than the number of molecules to dock -> saving all molecules")
-        else:
-            print(f"Our total molecules are more than the number of molecules to dock -> saving {mtd} molecules")
+        if len(base) > mtd:
+            print(f"Keeping top {mtd} molecules")
             base = base.head(mtd)
+        else:
+            print("Total <= requested, keeping all")
 
-    print("Saving")
-    # Rearrange the smiles
-    smiles = base.drop('score', 1)
+    # write smiles
+    print("Saving outputs to:", args.output_dir)
+
+    smiles = base.drop("score", axis=1)
     smiles = smiles[["smile", "id"]]
-    print("Here is the smiles:")
+    smiles_path = os.path.join(args.output_dir, "smiles.csv")
+    smiles.to_csv(smiles_path, sep=" ", index=False)
+
+    # write id-score
+    id_score = base.drop("smile", axis=1)
+    id_score_path = os.path.join(args.output_dir, "id_score.csv")
+    id_score.to_csv(id_score_path, index=False)
+
+    print("Sample smiles:")
     print(smiles.head())
-    smiles.to_csv("smiles.csv", sep=" ", index=False)
-
-    # Rearrange for id,score
-    base.drop("smile", 1, inplace=True)
-    base.to_csv("id_score.csv", index=False)
-    print("Here are the ids and scores")
-    print(base.head())
-
-
-
+    print("Sample id-score:")
+    print(id_score.head())
+    print("Done.")
