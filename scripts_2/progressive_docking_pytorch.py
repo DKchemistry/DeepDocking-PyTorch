@@ -11,7 +11,7 @@ from sklearn.metrics import precision_recall_curve, roc_curve, auc
 
 import pynvml  # MIG-aware GPU picker uses NVML
 
-# Being nice to coworkers and sensitive GPUsL
+# Being nice to coworkers and sensitive GPUs
 DISALLOWED_NAME_BITS = ["T1000"]            # never run on cards whose name contains these
 FORBIDDEN_CMD_BITS   = ["gdesmond", "icm64.bin"]  # skip devices running these jobs
 REQUIRE_MIN_FREE_GB  = 0.0                  # i might want to change this
@@ -722,6 +722,7 @@ prediction_test = generate_predictions(model, test_dataloader, device)
 
 print("Getting stats from predictions...")
 # Getting stats for validation
+#! I really think these need to be full variable names as it is confusing to follow
 precision_vl, recall_vl, thresholds_vl = precision_recall_curve(
     y_valid, prediction_valid
 )
