@@ -1,15 +1,15 @@
 # Background
 
-This is my WIP of a refactor of the original Deep Docking codebase to PyTorch >2.2 based on PhD studies at the [Frimurer Groupand our Computational Chemistry Unit](https://cbmr.ku.dk/research-facilities/ccu/) at the University Of Copenhagen and our collaboration with the [Gentile Group](https://gentilelab.uottawa.ca/) at the University of Ottawa. The original [Deep Docking](https://github.com/jamesgleave/DD_protocol) GitHub should be used as this code is under active development. If you use Deep Docking in your research, please cite:
+This is my WIP of a refactor of the original Deep Docking codebase to PyTorch >2.2 based on PhD studies at the [Frimurer Groupand our Computational Chemistry Unit](https://cbmr.ku.dk/research-facilities/ccu/) at the University Of Copenhagen and our collaboration with the [Gentile Group](https://gentilelab.uottawa.ca/) at the University of Ottawa. The original [Deep Docking](https://github.com/jamesgleave/DD_protocol) and it's publication are great resources to gain some familiartiy with the workflow. This refactor is now functional for typical use. Some miscellenous features regarding plotting performances are still in progress, but the core platform works. If you use Deep Docking in your research, please cite:
 
 Gentile, F. et al. *Deep Docking: A Deep Learning Platform for Augmentation of Structure Based Drug Discovery.* ACS Cent. Sci. 6, 939–949 (2020)  
 Gentile, F. et al. *Artificial intelligence–enabled virtual screening of ultra-large chemical libraries with deep docking.* Nat. Protoc. 17, 672–697 (2022)
 
 The documentation for the PyTorch refactor will be updated as soon as possible. Ideally, the platform retains original behavior wherever possible, with some exceptions. The most dramatic changes are in model training and inference (e.g. phase 4, phase 5) and workload management: 
 
-* migrations from TensorFlow 1.14/1.15  that used Keras for early stopping or timed stopping, which are now handled in PyTorch. 
+* Migrations from TensorFlow 1.14/1.15 that used Keras for early stopping or timed stopping, which are now handled in PyTorch. 
 
-* no absolute reliance on SLURM as I do not have easy access to test these implementations, so GPU task management is handled by pyNVML. These are custom in nature as they are meant to ease running the software in the context of my group (e.g., they block access to GPUs running Desmond Jobs or ICM jobs, restrict from running on certain GPUs meant to just handle terminal displays; these may be extended as we test on a variety of machines)
+* No absolute reliance on SLURM as I do not have easy access to test these implementations, so GPU task management is handled by pyNVML. These are custom in nature as they are meant to ease running the software in the context of my group (e.g., they block access to GPUs running Desmond Jobs or ICM jobs, restrict from running on certain GPUs meant to just handle terminal displays; these may be extended as we test on a variety of machines)
 
 These are primarily tested on NVIDIA A100 80gb GPUs with MIG instances and CUDA Version: 12.8. 
 
@@ -31,11 +31,11 @@ tf_pth_comparison/2RH1_phase_4_iteration_1.ipynb
 
 Professor Gentile and I found the differences in performance minor, though we caution neither runs are seeded. Thereafter we worked on other potential model architectures that are on going. 
 
-Recently, there was some encouragement to have this implementation functional on our machines across the semi-automated phases and this is currently in progress. I hope this maybe useful directly if you are in a similar position with respect to computing environments, or is extensible for your needs! I have tried to keep SLURM headers in the shell scripts, but their useability is not tested. Generally, they are bypassed, and `jobid_writer.py` is given a "dummy" argument such that it runs. 
+Recently, there was some encouragement to have this implementation functional on our machines across the semi-automated phases. I hope this maybe useful directly if you are in a similar position with respect to computing environments, or is extensible for your needs! I have tried to keep SLURM headers in the shell scripts, but their useability is not tested. Generally, they are bypassed, and `jobid_writer.py` is given a "dummy" argument such that it runs. 
 
 ## Documentation 
 
-Hopefully, I can upload a pre-prepared library that we have enumerated that was used in our earlier implentation of tensorflow code, that is currently being used in testing the pytorch implementation. The project directory that my current testing corresponds too. Briefly, we used an initial ~35M diversity subset of Enamine REAL Lead-Like, which totals to 66M post-library preparation steps as described on the original Deep Docking GitHub. Our  library preparation and fingerprinting are unchanged from the original implementation with respect to intent. Though, due licensing differences, alternative software is used in [stereochemical enumeration](http://www.mayachemtools.org/docs/scripts/html/RDKitEnumerateStereoisomers.html) and [protonation](https://www.schrodinger.com/platform/products/epik/). 
+I plan to upload a pre-prepared library that we have enumerated that was used in our earlier implentation of tensorflow code, that is currently being used in testing the pytorch implementation. This is the project directory that my current testing corresponds too. Briefly, we used an initial ~35M diversity subset of Enamine REAL Lead-Like, which totals to 66M post-library preparation steps as described in the original Deep Docking GitHub/Nature Protocols paper. Our library preparation and fingerprinting are unchanged from the original implementation with respect to intent. Though, due licensing differences, alternative software is used in [stereochemical enumeration](http://www.mayachemtools.org/docs/scripts/html/RDKitEnumerateStereoisomers.html) and [protonation](https://www.schrodinger.com/platform/products/epik/). 
 
 The following documentation contains examples that reference this library and gives the arguments I have used as examples to hopefully make using the code more straightforward. 
 
@@ -91,12 +91,12 @@ SLURM_JOB_NAME=phase_3
 bash ./phase_3_glide.sh 1 150 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1
 ```
 
-Here, each test/train/valid docking job will get `localhost:50` and `-NJOBS 150`. I have encountered one split finishing much faster than others despite equal splitting in the number of ligands to dock, I hadn't experienced this before, so it may be more prudent to set this up differently. 
+Here, each test/train/valid docking job will get `localhost:50` and `-NJOBS 150`. 
 
-`phase_4_pth.sh` is fairly different as it now relies on pytorch model and associated code. The output is mostly the same. Tensorboard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simply some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior tensorflow versions and is used for inference in phase 5. The script runs the `simple_job_N.sh` jobs with a simple wait. This works well in my system but you may want to comment out automatic execution or otherwise modify it, with 24 hyperparameter sets, an A100 80GB available, and about ~1.5M compounds in training/testing/validation: I have hit about 17% total usage via nvitop. At very large scales, I would imagine a crash without a more careful job execution system.
+`phase_4_pth.sh` is fairly different as it now relies on pytorch model and associated code. The output is the same. Tensorboard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simply some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior Tensorflow versions and is used for inference in phase 5. The script runs the `simple_job_N.sh` jobs with a simple wait. This works well in my system but you may want to comment out automatic execution or otherwise modify it, with 24 hyperparameter sets, an A100 80GB available, and about ~1.5M compounds in training/testing/validation: I have hit about 17% total usage via nvitop. At very large scales, I would imagine a crash without a more careful job execution system.
 
 
-The arugments related to slurm's gpu partition are "dummy" arguments to keep other processes happy, as SLURM is not being used here. pyNVML tries to find the GPU that isn't "banned" and then has the most available memory. You can see how that works in `scripts_2/progressive_docking_pytorch.py` and edit it to your needs.
+The arugments related to Slurm's GPU partition are "dummy" arguments to keep other processes happy, as SLURM is not being used here. pyNVML tries to find the GPU that isn't "banned" and then has the most available memory. You can see how that works in `scripts_2/progressive_docking_pytorch.py` and edit it to your needs. There are examples in that code based on what your groups runs. 
 
 ```sh
 conda activate pth_dd
@@ -112,9 +112,8 @@ SLURM_JOB_NAME=phase_4
 bash ./phase_4_pth.sh 1 3 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 dummy 10 1 0.01 0.9 00-15:00 pth_dd
 ```
 
-(typically its 11 iterations, typo in my initial testing)
 
-`phase_5_pth.sh` is also quite different and is functional in terms of output, though the manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking and chunks them at 250K at a time for inference. I find it useful in testing currently but it would likely need to be amended in the future, as my testing has been in ~70M range for the fingerprinted library and prospective is more helpful on the >1B scale, where this would be too slow. This does execute GPU inference on launch. 
+`phase_5_pth.sh` is also quite different but is functionally the same in terms of output. The manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking and chunks them at 250K at a time for inference. I find it useful in testing currently but it would likely need to be amended in the future (likely via a user argument). 
 
 ```sh
 conda activate pth_dd
@@ -130,6 +129,22 @@ SLURM_JOB_NAME=phase_5
 bash ./phase_5_pth.sh 1 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 0.9 ignore pth_dd
 ```
 
-Testing for further iterations continues, incrementing the iteration number behaves (1 -> 2, etc) so far as expected. While comparison to previous tensorflow versions is difficult, general behavior seems comparable, with median score improvements in line with previous experience. 
+I have tested five iterations with no issues using this approach. 
 
-The final extraction phase has not yet been refactored. 
+The final extraction is available as well: 
+
+```sh
+conda activate pth_dd
+bash ./final_extraction.sh <absolute_path_to_smiles_library> <absolute_path_to_projects_directory> <absolute_path_to_morgan_1024_predictions> <number_cpus> <integer to sample or `all_mol`> <conda_env> <path_to_iteration_of_project>
+```
+Example:
+
+```sh
+bash ./final_extraction.sh \
+  /mnt/data/dk/work/DeepDocking/library_prepared \
+  /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1/iteration_5/morgan_1024_predictions \
+  32 \
+  all_mol \ # Or an integer value of your choice. 
+  pth_dd \
+  /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1/iteration_5
+```
