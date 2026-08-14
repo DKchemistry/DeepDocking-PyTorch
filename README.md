@@ -1,6 +1,6 @@
 # Background
 
-This is my WIP of a refactor of the original Deep Docking codebase to PyTorch >2.2 based on PhD studies at the [Frimurer Groupand our Computational Chemistry Unit](https://cbmr.ku.dk/research-facilities/ccu/) at the University Of Copenhagen and our collaboration with the [Gentile Group](https://gentilelab.uottawa.ca/) at the University of Ottawa. The original [Deep Docking](https://github.com/jamesgleave/DD_protocol) and it's publication are great resources to gain some familiartiy with the workflow. This refactor is now functional for typical use. Some miscellenous features regarding plotting performangices are still in progress, but the core platform works. If you use Deep Docking in your research, please cite:
+This is my WIP of a refactor of the original Deep Docking codebase to PyTorch >2.2 based on PhD studies at the [Frimurer Group and our Computational Chemistry Unit](https://cbmr.ku.dk/research-facilities/ccu/) at the University of Copenhagen and our collaboration with the [Gentile Group](https://gentilelab.uottawa.ca/) at the University of Ottawa. The original [Deep Docking](https://github.com/jamesgleave/DD_protocol) and its publication are great resources to gain some familiarity with the workflow. This refactor is now functional for typical use. Some miscellaneous features regarding plotting performances are still in progress, but the core platform works. If you use Deep Docking in your research, please cite:
 
 Gentile, F. et al. *Deep Docking: A Deep Learning Platform for Augmentation of Structure Based Drug Discovery.* ACS Cent. Sci. 6, 939–949 (2020)  
 Gentile, F. et al. *Artificial intelligence–enabled virtual screening of ultra-large chemical libraries with deep docking.* Nat. Protoc. 17, 672–697 (2022)
@@ -23,36 +23,43 @@ Frimurer Group
 
 ## Current Status 
 
-An initial refactor of the training code was done some years ago and compared to a training run we had in the tensorflow version and is available here here: 
+An initial refactor of the training code was done some years ago and compared to a training run we had in the TensorFlow version and is available here:
 
 ```
 tf_pth_comparison/2RH1_phase_4_iteration_1.ipynb
 ```
 
-Professor Gentile and I found the differences in performance minor, though we caution neither runs are seeded. Thereafter we worked on other potential model architectures that are on going. 
+Professor Gentile and I found the differences in performance minor, though we caution neither runs are seeded. Thereafter we worked on other potential model architectures that are ongoing.
 
-Recently, there was some encouragement to have this implementation functional on our machines across the semi-automated phases. I hope this maybe useful directly if you are in a similar position with respect to computing environments, or is extensible for your needs! I have tried to keep SLURM headers in the shell scripts, but their useability is not tested. Generally, they are bypassed, and `jobid_writer.py` is given a "dummy" argument such that it runs. 
+Recently, there was some encouragement to have this implementation functional on our machines across the semi-automated phases. I hope this may be useful directly if you are in a similar position with respect to computing environments, or is extensible for your needs! I have tried to keep SLURM headers in the shell scripts, but their usability is not tested. Generally, they are bypassed, and `jobid_writer.py` is given a "dummy" argument such that it runs.
 
 ## Documentation 
 
-I plan to upload a pre-prepared library that we have enumerated that was used in our earlier implentation of tensorflow code, that is currently being used in testing the pytorch implementation. This is the project directory that my current testing corresponds too. Briefly, we used an initial ~35M diversity subset of Enamine REAL Lead-Like, which totals to 66M post-library preparation steps as described in the original Deep Docking GitHub/Nature Protocols paper. Our library preparation and fingerprinting are unchanged from the original implementation with respect to intent. Though, due licensing differences, alternative software is used in [stereochemical enumeration](http://www.mayachemtools.org/docs/scripts/html/RDKitEnumerateStereoisomers.html) and [protonation](https://www.schrodinger.com/platform/products/epik/). 
+I plan to upload a pre-prepared library that we have enumerated that was used in our earlier implementation of TensorFlow code, that is currently being used in testing the PyTorch implementation. This is the project directory that my current testing corresponds to. Briefly, we used an initial ~35M diversity subset of Enamine REAL Lead-Like, which totals to 66M post-library preparation steps as described in the original Deep Docking GitHub/Nature Protocols paper. Our library preparation and fingerprinting are unchanged from the original implementation with respect to intent. Though, due to licensing differences, alternative software is used in [stereochemical enumeration](http://www.mayachemtools.org/docs/scripts/html/RDKitEnumerateStereoisomers.html) and [protonation](https://www.schrodinger.com/platform/products/epik/).
 
 The following documentation contains examples that reference this library and gives the arguments I have used as examples to hopefully make using the code more straightforward. 
+
+The Linux/NVIDIA environment can be created from the repository root:
+
+```sh
+conda env create -f environment.yml
+conda activate deep-docking
+```
 
 `phase_1.sh` is unchanged with respect to the underlying scripts, just bypasses SLURM.
 
 ```sh
-conda activate pth_dd
+conda activate deep-docking
 export SLURM_JOB_NAME=phase_1 # passed to the jobid_writer.py
-bash ./phase_1.sh <iteration_number> <number_of_threads> <absolute_path_to_project_directory> <name_of_project> <mols_to_sample> <conda env> 
+bash ./phase_1.sh <iteration_number> <number_of_threads> <absolute_path_to_project_directory> <name_of_project> <mols_to_sample> <conda_env>
 ```
 
 Example: 
 
 ```sh
-conda activate pth_dd
+conda activate deep-docking
 export SLURM_JOB_NAME=phase_1
-bash ./phase_1.sh 1 120 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 46200 pth_dd
+bash ./phase_1.sh 1 120 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 46200 deep-docking
 ```
 
 Remember that the logs.txt file should be appropriately populated in your <name_of_project> directory!
@@ -60,73 +67,73 @@ Remember that the logs.txt file should be appropriately populated in your <name_
 `phase_2_glide.sh` is mostly unchanged, though the LigPrep command in this file is attempting to produce only the most dominant protomer/tautomer via input SMILES. Your usage should likely reflect your preferences. Additionally, the thread count is the *total* given to LigPrep, given three files (test/train/valid) it will divide by 3 for the splits and execute in parallel, Schrodinger job manager handles CPU task management. The command also executes when run, so be kind to your colleagues and check how many threads are in use.
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_2  # passed to the jobid_writer.py
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_2  # passed to the jobid_writer.py
 bash ./phase_2_glide.sh  <iteration_number> <total_threads_for_ligprep> <absolute_path_to_project_directory> <name_of_project>
 ```
 
 Example:
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_2 
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_2
 bash ./phase_2_glide.sh 1 120 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1
 ```
 
 Here, the LigPrep commands that are generated give each individual set 40 threads. 
 
-`phase_3_glide.sh` utilizies the template found from the logs.txt file of your project (line 9). It will also divide the <total_threads_for_glide> for the amount of threads to supply for each job and it will triple the count of `-NJOBS`. This is not always the most optimal way to run the command in my experience, so these arguments might change. The command also executes when run, so be kind to your colleagues and check how many threads are in use.
+`phase_3_glide.sh` utilizes the template found from the logs.txt file of your project (line 9). It will also divide the <total_threads_for_glide> for the amount of threads to supply for each job and it will triple the count of `-NJOBS`. This is not always the most optimal way to run the command in my experience, so these arguments might change. The command also executes when run, so be kind to your colleagues and check how many threads are in use.
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_3
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_3
 bash ./phase_3_glide.sh <iteration> <total_threads_for_glide> <absolute_path_to_project_directory> <name_of_project>
 ```
 
 Example: 
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_3
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_3
 bash ./phase_3_glide.sh 1 150 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1
 ```
 
 Here, each test/train/valid docking job will get `localhost:50` and `-NJOBS 150`. 
 
-`phase_4_pth.sh` is fairly different as it now relies on pytorch model and associated code. The output is the same. Tensorboard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simply some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior Tensorflow versions and is used for inference in phase 5. The script runs the `simple_job_N.sh` jobs with a simple wait. This works well in my system but you may want to comment out automatic execution or otherwise modify it, with 24 hyperparameter sets, an A100 80GB available, and about ~1.5M compounds in training/testing/validation: I have hit about 17% total usage via nvitop. At very large scales, I would imagine a crash without a more careful job execution system.
+`phase_4.sh` is fairly different as it now relies on PyTorch model and associated code. The output is the same. TensorBoard logging is also enabled, which is a hold-over from experimenting with different model architectures. Some efforts have been made to simplify some of the associated or unused code for readability/maintainability, though this is in progress. The output of training mirrors the equivalent of the prior TensorFlow versions and is used for inference in phase 5. The script runs the `simple_job_N.sh` jobs with a simple wait. This works well in my system but you may want to comment out automatic execution or otherwise modify it, with 24 hyperparameter sets, an A100 80GB available, and about ~1.5M compounds in training/testing/validation: I have hit about 17% total usage via nvitop. At very large scales, I would imagine a crash without a more careful job execution system.
 
 
-The arugments related to Slurm's GPU partition are "dummy" arguments to keep other processes happy, as SLURM is not being used here. pyNVML tries to find the GPU that isn't "banned" and then has the most available memory. You can see how that works in `scripts_2/progressive_docking_pytorch.py` and edit it to your needs. There are examples in that code based on what your groups runs. 
+The arguments related to SLURM's GPU partition are "dummy" arguments to keep other processes happy, as SLURM is not being used here. pyNVML tries to find the GPU that isn't "banned" and then has the most available memory. You can see how that works in `scripts_2/progressive_docking.py` and edit it to your needs. There are examples in that code based on what your group runs.
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_4
-bash ./phase_4_pth.sh <iteration_number> <threads> <absolute_path_to_project_directory> <name_of_project> <gpu_partition> <total_iterations> <percent_first_mols> <percent_last_mols> <recall_value> <time_string> <conda_env>
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_4
+bash ./phase_4.sh <iteration_number> <threads> <absolute_path_to_project_directory> <name_of_project> <gpu_partition> <total_iterations> <percent_first_mols> <percent_last_mols> <recall_value> <time_string> <conda_env>
 ```
 
 Example:
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_4
-bash ./phase_4_pth.sh 1 3 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 dummy 10 1 0.01 0.9 00-15:00 pth_dd
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_4
+bash ./phase_4.sh 1 3 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 dummy 10 1 0.01 0.9 00-15:00 deep-docking
 ```
 
 
-`phase_5_pth.sh` is also quite different but is functionally the same in terms of output. The manner in which GPU inference is distrbuted is fairly conservative and assumes the conventional 1M member library splitting as implemented originallly in Deep Docking and chunks them at 250K at a time for inference. I find it useful in testing currently but it would likely need to be amended in the future (likely via a user argument). 
+`phase_5.sh` is also quite different but is functionally the same in terms of output. The manner in which GPU inference is distributed is fairly conservative and assumes the conventional 1M member library splitting as implemented originally in Deep Docking and chunks them at 250K at a time for inference. I find it useful in testing currently but it would likely need to be amended in the future (likely via a user argument).
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_5
-bash ./phase_5_pth.sh <iteration_number> <absolute_path_to_project_directory> <name_of_project> <recall_value> <gpu_partition> <conda_env>
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_5
+bash ./phase_5.sh <iteration_number> <absolute_path_to_project_directory> <name_of_project> <recall_value> <gpu_partition> <conda_env>
 ```
 
 Example: 
 
 ```sh
-conda activate pth_dd
-SLURM_JOB_NAME=phase_5
-bash ./phase_5_pth.sh 1 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 0.9 ignore pth_dd
+conda activate deep-docking
+export SLURM_JOB_NAME=phase_5
+bash ./phase_5.sh 1 /mnt/data/dk/work/DeepDocking/projects Manuscript_pytorch_2RH1 0.9 ignore deep-docking
 ```
 
 I have tested five iterations with no issues using this approach. 
@@ -134,17 +141,18 @@ I have tested five iterations with no issues using this approach.
 The final extraction is available as well: 
 
 ```sh
-conda activate pth_dd
-bash ./final_extraction.sh <absolute_path_to_smiles_library> <absolute_path_to_projects_directory> <absolute_path_to_morgan_1024_predictions> <number_cpus> <integer to sample or `all_mol`> <conda_env> <path_to_iteration_of_project>
+conda activate deep-docking
+bash ./utilities/final_extraction.sh <absolute_path_to_smiles_library> <absolute_path_to_morgan_1024_predictions> <number_cpus> <integer_to_sample_or_all_mol> <conda_env> <path_to_iteration_of_project>
 ```
 Example:
 
 ```sh
-bash ./final_extraction.sh \
+# Replace all_mol with an integer value of your choice if desired.
+bash ./utilities/final_extraction.sh \
   /mnt/data/dk/work/DeepDocking/library_prepared \
   /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1/iteration_5/morgan_1024_predictions \
   32 \
-  all_mol \ # Or an integer value of your choice. 
-  pth_dd \
+  all_mol \
+  deep-docking \
   /mnt/data/dk/work/DeepDocking/projects/pytorch_2RH1/iteration_5
 ```
