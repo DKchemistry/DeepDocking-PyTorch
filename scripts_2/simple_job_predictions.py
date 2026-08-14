@@ -9,7 +9,7 @@ parser.add_argument('-fp', '--file_path', required=True, help='Path to project f
 parser.add_argument('-n_it', '--n_iteration', required=True, help='Number of current iteration')
 parser.add_argument('-mdd', '--morgan_directory', required=True, help='Path to Morgan fingerprint directory')
 parser.add_argument('-gp',  '--gpu_part', required=True, help='name(s) of GPU partitions')
-parser.add_argument('-tf_e','--tensorflow_env', required=True, help='name of conda environment (kept arg name for compatibility)')
+parser.add_argument('-e','--conda_env', required=True, help='name of conda environment')
 parser.add_argument('-save','--save_path', required=False, default=None)
 
 io_args = parser.parse_args()
@@ -17,7 +17,7 @@ protein   = io_args.project_name
 n_it      = int(io_args.n_iteration)
 mdd       = io_args.morgan_directory
 gpu_part  = str(io_args.gpu_part)
-env       = str(io_args.tensorflow_env) # obvious pytorch but its so much to refactor this right now. 
+env       = str(io_args.conda_env)
 
 DATA_PATH = os.path.join(io_args.file_path, protein)
 SAVE_PATH = io_args.save_path or DATA_PATH
@@ -53,7 +53,7 @@ for idx, fpath in enumerate(part_files, start=1):
         ref.write('  source "$(conda info --base)/etc/profile.d/conda.sh" || true\n')
         ref.write(f'  conda activate {env} || true\n')
         ref.write('fi\n')
-        ref.write('python -u Prediction_morgan_1024_pth.py ')
+        ref.write('python -u Prediction_morgan_1024.py ')
         ref.write(f'-fn "{os.path.basename(fpath)}" ')
         ref.write(f'-protein "{protein}" ')
         ref.write(f'-it {n_it} ')

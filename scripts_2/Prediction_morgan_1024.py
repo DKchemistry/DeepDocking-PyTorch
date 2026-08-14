@@ -107,7 +107,7 @@ MDD       = io_args.morgan_directory
 
 # --- torch must be imported after any CUDA env setup done by the caller scripts ---
 import torch
-from ML.ModelsPytorch import PytorchRefactoredModel
+from ML.Models import PytorchRefactoredModel
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device for prediction: {device}")
 
