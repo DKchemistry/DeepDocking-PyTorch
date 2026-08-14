@@ -5,8 +5,9 @@ SMILES_DIR="$1"
 PRED_DIR="$2"
 PROCS="$3"
 MOLS_TO_DOCK="${4:-all_mol}"
-CONDA_ENV="$5"     # e.g. pth_dd
+CONDA_ENV="$5"     # e.g. deep-docking
 ITER_DIR="$6"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # make conda available in this non-interactive bash
 if command -v conda >/dev/null 2>&1; then
@@ -21,13 +22,13 @@ OUT_DIR="${ITER_DIR%/}/final_extraction"
 mkdir -p "$OUT_DIR"
 
 if [ "$MOLS_TO_DOCK" = "all_mol" ]; then
-  python final_extraction.py \
+  python "$SCRIPT_DIR/final_extraction.py" \
     -smile_dir "$SMILES_DIR" \
     -prediction_dir "$PRED_DIR" \
     -processors "$PROCS" \
     -output_dir "$OUT_DIR"
 else
-  python final_extraction.py \
+  python "$SCRIPT_DIR/final_extraction.py" \
     -smile_dir "$SMILES_DIR" \
     -prediction_dir "$PRED_DIR" \
     -processors "$PROCS" \
